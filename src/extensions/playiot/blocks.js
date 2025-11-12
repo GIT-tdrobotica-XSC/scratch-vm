@@ -1,11 +1,28 @@
-const ArgumentType = require('../../extension-support/argument-type');
 const BlockType = require('../../extension-support/block-type');
+const ArgumentType = require('../../extension-support/argument-type');
 const PlayIotSerial = require('./playiot-serial');
+const formatMessage = require('format-message');
 
-class PlayIot {
+class PlayIoTPeripheral {
+    constructor(runtime, extensionId) {
+        this._runtime = runtime;
+        this._extensionId = extensionId;
+        this._serial = new PlayIotSerial();
+
+        this._runtime.registerPeripheralExtension(extensionId, this);
+    }
+
+    // Scratch llama a estos métodos desde el botón naranja
+    scan() { return this._serial.scan(); }
+    connect() { return this._serial.connect(); }
+    disconnect() { return this._serial.disconnect(); }
+    isConnected() { return this._serial.connected; }
+}
+
+class PlayIoTBlocks {
     constructor(runtime) {
         this.runtime = runtime;
-        this.serial = new PlayIotSerial();
+        this._peripheral = new PlayIoTPeripheral(runtime, 'playiot');
     }
 
     getInfo() {
@@ -15,13 +32,8 @@ class PlayIot {
             color1: '#FF6600',
             color2: '#CC5200',
             color3: '#994000',
-
+            showStatusButton: true,
             blocks: [
-                {
-                    opcode: 'connect',
-                    blockType: BlockType.COMMAND,
-                    text: 'Conectar a dispositivo PlayIoT',
-                },
                 {
                     opcode: 'ledOn',
                     blockType: BlockType.COMMAND,
@@ -36,19 +48,15 @@ class PlayIot {
         };
     }
 
-    async connect() {
-        await this.serial.connect();
-    }
-
     async ledOn() {
         const json = JSON.stringify({ cmd: 'LED', state: 'ON' });
-        await this.serial.write(json);
+        await this._peripheral._serial.write(json);
     }
 
     async ledOff() {
         const json = JSON.stringify({ cmd: 'LED', state: 'OFF' });
-        await this.serial.write(json);
+        await this._peripheral._serial.write(json);
     }
 }
 
-module.exports = PlayIot;
+module.exports = PlayIoTBlocks;

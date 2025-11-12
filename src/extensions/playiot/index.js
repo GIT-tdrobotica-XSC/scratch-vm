@@ -1,5 +1,6 @@
-const PlayIot = require('./blocks');
+// src/extensions/playiot/index.js
+const PlayIoT = require('./blocks');
 
-module.exports = function (runtime) {
-    return new PlayIot(runtime);
+module.exports = function(runtime) {
+    return new PlayIoT(runtime, 'playiot');
 };
