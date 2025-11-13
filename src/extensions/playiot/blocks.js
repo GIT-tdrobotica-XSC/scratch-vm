@@ -11,6 +11,7 @@ class PlayIoTPeripheral {
         this.devices = [];
         this._scanning = false;
         this._connectedDeviceId = null;
+        this.buffer = ''; // Buffer para datos incompletos
         
         // Variables para almacenar datos de sensores
         this.sensorData = {
@@ -102,93 +103,125 @@ class PlayIoTPeripheral {
     }
 
     async connect(peripheralId) {
-        console.log('🔌 Intentando conectar a:', peripheralId);
-        
-        const index = parseInt(peripheralId.split('_')[1]);
-        const port = this.devices[index];
-        
-        if (!port) {
-            console.error('❌ Puerto no encontrado para', peripheralId);
-            return;
-        }
-
-        try {
-            await this._serial.connect(port);
-            this._connectedDeviceId = peripheralId;
-            
-            // ✨ NUEVO: Configurar el handler DESPUÉS de conectar
-            this._setupDataHandler();
-            
-            console.log('✅ Conectado exitosamente a', peripheralId);
-            
-            this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTED);
-        } catch (e) {
-            console.error('❌ Error conectando:', e);
-            this._connectedDeviceId = null;
-            this._runtime.emit(this._runtime.constructor.PERIPHERAL_REQUEST_ERROR, {
-                message: `Error: ${e.message}`,
-                extensionId: this._extensionId
-            });
-        }
+    console.log('🔌 Intentando conectar a:', peripheralId);
+    
+    const index = parseInt(peripheralId.split('_')[1]);
+    const port = this.devices[index];
+    
+    if (!port) {
+        console.error('❌ Puerto no encontrado para', peripheralId);
+        return;
     }
 
-    // ✨ NUEVO: Configurar el procesamiento de datos
-    _setupDataHandler() {
-        if (!this._serial) return;
+    try {
+        await this._serial.connect(port);
+        this._connectedDeviceId = peripheralId;
         
-        // Guardar el handler original
-        const originalHandler = this._serial.handleIncoming.bind(this._serial);
+        // Configurar el handler de datos
+        this._setupDataHandler();
         
-        // Extender el handler para procesar datos de sensores
-        this._serial.handleIncoming = (text) => {
-            // Llamar al handler original (para logs)
-            originalHandler(text);
-            
-            // Procesar datos de sensores
-            this._processSensorData(text);
+        // ✨ NUEVO: Configurar handler de desconexión inesperada
+        this._serial.onDisconnect = () => {
+            console.log('⚠️ Desconexión inesperada detectada');
+            this._connectedDeviceId = null;
+            this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
         };
         
-        console.log('📡 Handler de datos configurado');
-    }
-
-    // ✨ MEJORADO: Procesamiento más robusto
-    _processSensorData(text) {
-    this.buffer = (this.buffer || '') + text;
-    const lines = this.buffer.split('\n'); // cada línea es un JSON completo
-    this.buffer = lines.pop(); // deja la última línea incompleta en el buffer
-
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-
-        try {
-            const data = JSON.parse(trimmed);
-            if (data.inputs) {
-                Object.keys(data.inputs).forEach(key => {
-                    this.sensorData[key] = data.inputs[key];
-                });
-            }
-            // console.log('📊 Sensores actualizados:', this.sensorData);
-        } catch (e) {
-            console.warn('⚠️ Error parseando JSON:', trimmed.substring(0, 50));
-        }
+        console.log('✅ Conectado exitosamente a', peripheralId);
+        
+        this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTED);
+    } catch (e) {
+        console.error('❌ Error conectando:', e);
+        this._connectedDeviceId = null;
+        this._runtime.emit(this._runtime.constructor.PERIPHERAL_REQUEST_ERROR, {
+            message: `Error: ${e.message}`,
+            extensionId: this._extensionId
+        });
     }
 }
 
+    // Configurar el procesamiento de datos
+    _setupDataHandler() {
+    if (!this._serial) return;
+    
+    // Usar el callback onData
+    this._serial.onData = (data) => {
+        if (data.inputs) {
+            Object.keys(data.inputs).forEach(key => {
+                this.sensorData[key] = data.inputs[key];
+            });
+        }
+    };
+    
+    console.log('📡 Handler de datos configurado');
+}
+
+    // Procesamiento robusto de datos de sensores
+    _processSensorData(text) {
+        this.buffer += text;
+        const lines = this.buffer.split('\n');
+        this.buffer = lines.pop() || ''; // Guardar última línea incompleta
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+
+            try {
+                const data = JSON.parse(trimmed);
+                if (data.inputs) {
+                    // Actualizar datos de sensores
+                    Object.keys(data.inputs).forEach(key => {
+                        if (key in this.sensorData) {
+                            this.sensorData[key] = data.inputs[key];
+                        }
+                    });
+                    // console.log('📊 Sensores actualizados:', this.sensorData);
+                }
+            } catch (e) {
+                console.warn('⚠️ Error parseando JSON:', trimmed.substring(0, 50));
+            }
+        }
+    }
 
     async disconnect() {
-        console.log('🔌 Desconectando...');
+        console.log('🔌 Desconectando dispositivo...');
         
-        // Limpiar buffer
-        this.buffer = '';
-        
-        await this._serial.disconnect();
-        this._connectedDeviceId = null;
-        this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
+        try {
+            // Limpiar buffer de datos
+            this.buffer = '';
+            
+            // Resetear datos de sensores
+            Object.keys(this.sensorData).forEach(key => {
+                this.sensorData[key] = 0;
+            });
+            
+            // Desconectar el serial
+            if (this._serial) {
+                await this._serial.disconnect();
+            }
+            
+            // Limpiar ID de dispositivo conectado
+            this._connectedDeviceId = null;
+            
+            console.log('✅ Desconexión completada');
+            
+            // Notificar a Scratch
+            this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
+            
+        } catch (error) {
+            console.error('❌ Error durante desconexión:', error);
+            
+            // Forzar limpieza incluso si hay error
+            this.buffer = '';
+            this._connectedDeviceId = null;
+            
+            // Notificar desconexión de todos modos
+            this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
+        }
     }
 
     isConnected() {
-        return this._serial.connected;
+        return this._serial && this._serial.connected;
     }
 
     getPeripheralDeviceIds() {
@@ -491,6 +524,10 @@ class PlayIoTBlocks {
             console.log(`📌 Pin ${args.PIN} -> ${args.STATE}`);
         } catch (e) {
             console.error('❌ Error en digitalWrite:', e);
+            // Si el dispositivo se perdió, no relanzar el error
+            if (e.message && e.message.includes('device has been lost')) {
+                console.warn('⚠️ Dispositivo desconectado durante escritura');
+            }
         }
     }
 
@@ -515,6 +552,9 @@ class PlayIoTBlocks {
             console.log(`📊 PWM Pin ${args.PIN} -> ${value}`);
         } catch (e) {
             console.error('❌ Error en analogWrite:', e);
+            if (e.message && e.message.includes('device has been lost')) {
+                console.warn('⚠️ Dispositivo desconectado durante escritura');
+            }
         }
     }
 
@@ -545,6 +585,9 @@ class PlayIoTBlocks {
             console.log(`🎨 RGB LED ${led} -> R:${r} G:${g} B:${b}`);
         } catch (e) {
             console.error('❌ Error en setRGBColor:', e);
+            if (e.message && e.message.includes('device has been lost')) {
+                console.warn('⚠️ Dispositivo desconectado durante escritura');
+            }
         }
     }
 
@@ -578,6 +621,9 @@ class PlayIoTBlocks {
             console.log(`🎨 RGB LED ${led} -> ${color}`);
         } catch (e) {
             console.error('❌ Error en setRGBColorHex:', e);
+            if (e.message && e.message.includes('device has been lost')) {
+                console.warn('⚠️ Dispositivo desconectado durante escritura');
+            }
         }
     }
 
@@ -604,6 +650,9 @@ class PlayIoTBlocks {
             console.log(`💡 RGB LED ${led} apagado`);
         } catch (e) {
             console.error('❌ Error en rgbOff:', e);
+            if (e.message && e.message.includes('device has been lost')) {
+                console.warn('⚠️ Dispositivo desconectado durante escritura');
+            }
         }
     }
 
@@ -630,6 +679,9 @@ class PlayIoTBlocks {
             console.log('💡 Todos los LEDs RGB apagados');
         } catch (e) {
             console.error('❌ Error en allRGBOff:', e);
+            if (e.message && e.message.includes('device has been lost')) {
+                console.warn('⚠️ Dispositivo desconectado durante escritura');
+            }
         }
     }
 
@@ -656,18 +708,17 @@ class PlayIoTBlocks {
             console.log(`🔄 Servo ${servo} -> ${angle}°`);
         } catch (e) {
             console.error('❌ Error en servoWrite:', e);
+            if (e.message && e.message.includes('device has been lost')) {
+                console.warn('⚠️ Dispositivo desconectado durante escritura');
+            }
         }
     }
 
-    // ✨ MEJORADO: Bloques de lectura con logs para debug
+    // Bloques de lectura
     readButton(args) {
         const button = args.BUTTON;
         const value = this.peripheral.sensorData[`button_${button}`];
         const isPressed = value === 1;
-        
-        // Log para debug (puedes comentarlo después)
-        console.log(`🔘 Botón ${button}: ${value} (${isPressed ? 'presionado' : 'no presionado'})`);
-        
         return isPressed;
     }
 
@@ -684,10 +735,6 @@ class PlayIoTBlocks {
         }
         
         const value = this.peripheral.sensorData[key] || 0;
-        
-        // Log para debug (puedes comentarlo después)
-        console.log(`📊 ${analog}: ${value}`);
-        
         return value;
     }
 
@@ -695,10 +742,6 @@ class PlayIoTBlocks {
         const axis = args.AXIS;
         const key = `analog_${axis}`;
         const value = this.peripheral.sensorData[key] || 0;
-        
-        // Log para debug (puedes comentarlo después)
-        console.log(`🕹️ Joystick ${axis}: ${value}`);
-        
         return value;
     }
 
@@ -716,10 +759,6 @@ class PlayIoTBlocks {
         
         const value = this.peripheral.sensorData[key];
         const isAtLimit = value === 1 || value === true;
-        
-        // Log para debug (puedes comentarlo después)
-        console.log(`🕹️ Joystick límite ${direction}: ${value} (${isAtLimit})`);
-        
         return isAtLimit;
     }
 }
