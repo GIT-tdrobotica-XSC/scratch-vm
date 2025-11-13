@@ -8,14 +8,14 @@ class PlayIotSerial {
         this.buffer = '';
     }
 
-    // ✨ MODIFICADO: Ahora acepta el puerto como parámetro
+    // Conecta al puerto recibido
     async connect(port) {
         if (!port) {
             console.error('❌ No se proporcionó puerto');
             return;
         }
 
-        // Si ya hay un puerto abierto, cerrarlo primero
+        // Cierra puerto previo si existía
         if (this.port && this.connected) {
             await this.disconnect();
         }
@@ -23,50 +23,51 @@ class PlayIotSerial {
         this.port = port;
 
         try {
-            // Verificar si el puerto ya está abierto
             if (!this.port.readable || !this.port.writable) {
                 await this.port.open({ baudRate: 115200 });
             }
-            
+
             this.keepReading = true;
             this.connected = true;
             console.log('✅ Conectado al ESP32');
-            
-            // Iniciar lectura en segundo plano
+
+            // Iniciar lectura
             this.readLoop();
 
             // Configurar escritura
             const textEncoder = new TextEncoderStream();
             textEncoder.readable.pipeTo(this.port.writable);
             this.writer = textEncoder.writable.getWriter();
-
         } catch (err) {
             console.error('❌ Error al conectar:', err);
             this.connected = false;
             this.port = null;
-            throw err; // Propagar el error para manejarlo arriba
+            throw err;
         }
     }
 
     async disconnect() {
         this.keepReading = false;
-        
+
         try {
             if (this.writer) {
+                // Ensure writer is closed
                 await this.writer.close().catch(e => console.warn('Error cerrando writer:', e));
                 this.writer = null;
             }
-            
+
             if (this.reader) {
+                // Cancelling the reader causes the readLoop() to throw an AbortError, 
+                // which is now handled inside readLoop().
                 await this.reader.cancel().catch(e => console.warn('Error cancelando reader:', e));
                 this.reader = null;
             }
-            
+
             if (this.port) {
                 await this.port.close().catch(e => console.warn('Error cerrando puerto:', e));
                 this.port = null;
             }
-            
+
             this.connected = false;
             console.log('🔌 Puerto desconectado');
         } catch (err) {
@@ -88,26 +89,33 @@ class PlayIotSerial {
 
             await this.reader.releaseLock();
         } catch (err) {
+            // FIX: Explicitly check for AbortError, which is the expected error when the reader is canceled 
+            // during disconnection. If this is the case, we exit silently to prevent an unhandled rejection.
+            if (err.name === 'AbortError' && !this.keepReading) {
+                console.log('ℹ️ Read loop cancelado (AbortError) por desconexión');
+                // We return here to resolve the readLoop promise silently.
+                return;
+            }
             console.error('❌ Error en readLoop:', err);
             this.keepReading = false;
         }
     }
 
+    // 📌 Maneja buffer por líneas, evita JSON incompleto
     handleIncoming(text) {
         this.buffer += text;
-        while (this.buffer.includes('}')) {
-            const start = this.buffer.indexOf('{');
-            const end = this.buffer.indexOf('}') + 1;
-            if (start < 0 || end <= start) break;
+        let lines = this.buffer.split('\n'); // separa por salto de línea
+        this.buffer = lines.pop(); // deja última línea incompleta en buffer
 
-            const jsonStr = this.buffer.substring(start, end);
-            this.buffer = this.buffer.substring(end);
+        for (let line of lines) {
+            line = line.trim();
+            if (!line) continue;
 
             try {
-                const data = JSON.parse(jsonStr);
+                const data = JSON.parse(line);
                 console.log('📥 RX:', data);
             } catch (err) {
-                console.warn('⚠️ JSON inválido:', jsonStr);
+                console.warn('⚠️ JSON inválido:', line, err);
             }
         }
     }
@@ -117,8 +125,9 @@ class PlayIotSerial {
             console.error('❌ No hay conexión activa para escribir');
             return;
         }
+
         try {
-            await this.writer.write(msg + '\n');
+            await this.writer.write(msg + '\n'); // agrega salto de línea
             console.log('📤 TX:', msg);
         } catch (err) {
             console.error('❌ Error enviando datos:', err);
@@ -126,7 +135,6 @@ class PlayIotSerial {
         }
     }
 
-    // ✨ NUEVO: Método útil para verificar si el puerto está disponible
     isPortOpen() {
         return this.port && this.connected && this.port.readable && this.port.writable;
     }
