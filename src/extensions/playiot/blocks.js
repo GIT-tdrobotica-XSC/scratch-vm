@@ -1,6 +1,7 @@
 const BlockType = require('../../extension-support/block-type');
 const ArgumentType = require('../../extension-support/argument-type');
 const PlayIotSerial = require('./playiot-serial');
+const PlayIoTFlasher = require('./playiot-flasher');
 const formatMessage = require('format-message');
 
 class PlayIoTPeripheral {
@@ -8,9 +9,11 @@ class PlayIoTPeripheral {
         this._runtime = runtime;
         this._extensionId = extensionId;
         this._serial = new PlayIotSerial();
+        this._flasher = new PlayIoTFlasher();
         this.devices = [];
         this._scanning = false;
         this._connectedDeviceId = null;
+        this._autoFlashEnabled = true; // Habilitar auto-flasheo por defecto
         this.buffer = ''; // Buffer para datos incompletos
         
         // Variables para almacenar datos de sensores
@@ -104,10 +107,10 @@ class PlayIoTPeripheral {
 
     async connect(peripheralId) {
     console.log('🔌 Intentando conectar a:', peripheralId);
-    
+
     const index = parseInt(peripheralId.split('_')[1]);
     const port = this.devices[index];
-    
+
     if (!port) {
         console.error('❌ Puerto no encontrado para', peripheralId);
         return;
@@ -116,19 +119,24 @@ class PlayIoTPeripheral {
     try {
         await this._serial.connect(port);
         this._connectedDeviceId = peripheralId;
-        
+
         // Configurar el handler de datos
         this._setupDataHandler();
-        
+
         // ✨ NUEVO: Configurar handler de desconexión inesperada
         this._serial.onDisconnect = () => {
             console.log('⚠️ Desconexión inesperada detectada');
             this._connectedDeviceId = null;
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
         };
-        
+
         console.log('✅ Conectado exitosamente a', peripheralId);
-        
+
+        // 🔥 NUEVO: Verificar firmware automáticamente
+        if (this._autoFlashEnabled) {
+            await this._checkAndFlashFirmware(port);
+        }
+
         this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTED);
     } catch (e) {
         console.error('❌ Error conectando:', e);
@@ -185,39 +193,121 @@ class PlayIoTPeripheral {
 
     async disconnect() {
         console.log('🔌 Desconectando dispositivo...');
-        
+
         try {
             // Limpiar buffer de datos
             this.buffer = '';
-            
+
             // Resetear datos de sensores
             Object.keys(this.sensorData).forEach(key => {
                 this.sensorData[key] = 0;
             });
-            
+
             // Desconectar el serial
             if (this._serial) {
                 await this._serial.disconnect();
             }
-            
+
             // Limpiar ID de dispositivo conectado
             this._connectedDeviceId = null;
-            
+
             console.log('✅ Desconexión completada');
-            
+
             // Notificar a Scratch
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
-            
+
         } catch (error) {
             console.error('❌ Error durante desconexión:', error);
-            
+
             // Forzar limpieza incluso si hay error
             this.buffer = '';
             this._connectedDeviceId = null;
-            
+
             // Notificar desconexión de todos modos
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
         }
+    }
+
+    /**
+     * Verifica el firmware del ESP32 y flashea automáticamente si es necesario
+     * @param {SerialPort} port - Puerto serial conectado
+     */
+    async _checkAndFlashFirmware(port) {
+        console.log('🔍 Verificando firmware del ESP32...');
+
+        try {
+            // Verificar firmware actual
+            const firmwareCheck = await this._flasher.checkFirmware(port);
+
+            if (firmwareCheck.hasValidFirmware) {
+                console.log(`✅ Firmware válido detectado: v${firmwareCheck.version}`);
+                return;
+            }
+
+            console.log('⚠️ Firmware no detectado o inválido');
+
+            // Preguntar al usuario si desea flashear
+            const shouldFlash = confirm(
+                '🔧 El ESP32 necesita instalar la configuración de PlayIoT.\n\n' +
+                '¿Deseas instalar la configuración automáticamente ahora?\n\n' +
+                'Esto tomará aproximadamente 30 segundos.'
+            );
+
+            if (!shouldFlash) {
+                console.log('ℹ️ Usuario canceló el flasheo automático');
+                return;
+            }
+
+            // Cerrar conexión serial para flashear
+            console.log('🔌 Cerrando conexión para flasheo...');
+            await this._serial.disconnect();
+
+            // Esperar un momento
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Configurar callbacks de progreso
+            this._flasher.onProgress((progress, message) => {
+                console.log(`[${progress}%] ${message}`);
+                // TODO: Mostrar progreso en UI de Scratch
+            });
+
+            this._flasher.onComplete(() => {
+                console.log('✅ Flasheo completado exitosamente');
+                alert('✅ Configuración instalada correctamente.\n\nReconectando ESP32...');
+            });
+
+            this._flasher.onError((error) => {
+                console.error('❌ Error durante flasheo:', error);
+                alert(`❌ Error durante la instalación:\n\n${error.message}\n\nPor favor, intenta nuevamente.`);
+            });
+
+            // Iniciar flasheo
+            console.log('🔥 Iniciando flasheo del firmware...');
+            await this._flasher.flashFirmware(port);
+
+            // Esperar a que el ESP32 se reinicie
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // Reconectar
+            console.log('🔌 Reconectando al ESP32...');
+            await this._serial.connect(port);
+            this._setupDataHandler();
+
+            console.log('✅ Reconexión exitosa');
+
+        } catch (error) {
+            console.error('❌ Error durante verificación/flasheo de firmware:', error);
+            // No lanzar el error para no interrumpir la conexión si el flasheo falla
+        }
+    }
+
+    /**
+     * Habilita o deshabilita el flasheo automático
+     * @param {boolean} enabled - true para habilitar, false para deshabilitar
+     */
+    setAutoFlashEnabled(enabled) {
+        this._autoFlashEnabled = enabled;
+        console.log(`🔧 Auto-flasheo ${enabled ? 'habilitado' : 'deshabilitado'}`);
     }
 
     isConnected() {

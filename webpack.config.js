@@ -124,6 +124,10 @@ const playgroundBuilder = webBuilder.clone()
         },
         {
             from: 'src/playground'
+        },
+        {
+            from: 'src/extensions/playiot/firmware',
+            to: 'static/playiot/firmware'
         }
     ]));
 
