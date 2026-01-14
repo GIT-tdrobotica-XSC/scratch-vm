@@ -28,6 +28,10 @@ class PlayIotSerial {
         this.keepReading = true;
         this.connected = true;
         this.buffer = ''; // 🧹 limpia buffer viejo
+        
+        // 🔴 NUEVO: Esperar un poco para que se estabilice después del reset
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
         console.log('✅ Conectado al ESP32');
 
         // Configurar decodificador

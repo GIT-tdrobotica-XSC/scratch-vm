@@ -5,6 +5,7 @@ const formatMessage = require('format-message');
 
 class PlayIoTPeripheral {
     constructor(runtime, extensionId) {
+        
         this._runtime = runtime;
         this._extensionId = extensionId;
         this._serial = new PlayIotSerial();
@@ -31,6 +32,8 @@ class PlayIoTPeripheral {
 
         this._runtime.registerPeripheralExtension(extensionId, this);
         this._autoScan();
+        window.playIotSerial = this._serial;
+        window.playIotPeripheral = this; 
     }
 
     async _autoScan() {
@@ -38,7 +41,7 @@ class PlayIoTPeripheral {
             if ('serial' in navigator) {
                 const ports = await navigator.serial.getPorts();
                 this.devices = ports;
-                console.log('🔍 Auto-scan: encontrados', ports.length, 'puertos autorizados');
+                console.log('Auto-scan: encontrados', ports.length, 'puertos autorizados');
                 
                 if (ports.length > 0) {
                     this._runtime.emit(
@@ -48,18 +51,18 @@ class PlayIoTPeripheral {
                 }
             }
         } catch (e) {
-            console.warn('⚠️ Error en auto-scan:', e);
+            console.warn('Error en auto-scan:', e);
         }
     }
 
     async scan() {
         if (this._scanning) {
-            console.log('⏳ Escaneo ya en progreso');
+            console.log('Escaneo ya en progreso');
             return;
         }
 
         this._scanning = true;
-        console.log('🔍 Solicitando nuevo puerto...');
+        console.log('Solicitando nuevo puerto...');
 
         try {
             const existingPorts = await navigator.serial.getPorts();
@@ -72,7 +75,7 @@ class PlayIoTPeripheral {
                 this.devices = existingPorts;
             }
             
-            console.log('✅ Total dispositivos:', this.devices.length);
+            console.log('Total dispositivos:', this.devices.length);
 
             this._runtime.emit(
                 this._runtime.constructor.PERIPHERAL_LIST_UPDATE,
@@ -80,9 +83,9 @@ class PlayIoTPeripheral {
             );
         } catch (e) {
             if (e.name === 'NotFoundError') {
-                console.log('ℹ️ Usuario canceló');
+                console.log('Usuario canceló');
             } else {
-                console.error('❌ Error en scan:', e);
+                console.error('Error en scan:', e);
             }
         } finally {
             this._scanning = false;
@@ -103,13 +106,13 @@ class PlayIoTPeripheral {
     }
 
     async connect(peripheralId) {
-    console.log('🔌 Intentando conectar a:', peripheralId);
+    console.log('Intentando conectar a:', peripheralId);
     
     const index = parseInt(peripheralId.split('_')[1]);
     const port = this.devices[index];
     
     if (!port) {
-        console.error('❌ Puerto no encontrado para', peripheralId);
+        console.error('Puerto no encontrado para', peripheralId);
         return;
     }
 
@@ -120,18 +123,18 @@ class PlayIoTPeripheral {
         // Configurar el handler de datos
         this._setupDataHandler();
         
-        // ✨ NUEVO: Configurar handler de desconexión inesperada
+        // Configurar handler de desconexión inesperada
         this._serial.onDisconnect = () => {
-            console.log('⚠️ Desconexión inesperada detectada');
+            console.log('Desconexión inesperada detectada');
             this._connectedDeviceId = null;
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
         };
         
-        console.log('✅ Conectado exitosamente a', peripheralId);
+        console.log('Conectado exitosamente a', peripheralId);
         
         this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTED);
     } catch (e) {
-        console.error('❌ Error conectando:', e);
+        console.error('Error conectando:', e);
         this._connectedDeviceId = null;
         this._runtime.emit(this._runtime.constructor.PERIPHERAL_REQUEST_ERROR, {
             message: `Error: ${e.message}`,
@@ -153,7 +156,7 @@ class PlayIoTPeripheral {
         }
     };
     
-    console.log('📡 Handler de datos configurado');
+    console.log('Handler de datos configurado');
 }
 
     // Procesamiento robusto de datos de sensores
@@ -175,16 +178,15 @@ class PlayIoTPeripheral {
                             this.sensorData[key] = data.inputs[key];
                         }
                     });
-                    // console.log('📊 Sensores actualizados:', this.sensorData);
                 }
             } catch (e) {
-                console.warn('⚠️ Error parseando JSON:', trimmed.substring(0, 50));
+                console.warn('Error parseando JSON:', trimmed.substring(0, 50));
             }
         }
     }
 
     async disconnect() {
-        console.log('🔌 Desconectando dispositivo...');
+        console.log('Desconectando dispositivo...');
         
         try {
             // Limpiar buffer de datos
@@ -203,13 +205,13 @@ class PlayIoTPeripheral {
             // Limpiar ID de dispositivo conectado
             this._connectedDeviceId = null;
             
-            console.log('✅ Desconexión completada');
+            console.log('Desconexión completada');
             
             // Notificar a Scratch
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
             
         } catch (error) {
-            console.error('❌ Error durante desconexión:', error);
+            console.error('Error durante desconexión:', error);
             
             // Forzar limpieza incluso si hay error
             this.buffer = '';
@@ -244,16 +246,16 @@ class PlayIoTBlocks {
         return {
             id: 'playiot',
             name: 'PlayIoT',
-            color1: '#FF6600',
-            color2: '#CC5200',
-            color3: '#994000',
+            color1: '#808080',
+            color2: '#666666',
+            color3: '#4d4d4d',
             showStatusButton: true,
             blocks: [
                 // SALIDAS DIGITALES
                 {
                     opcode: 'digitalWrite',
                     blockType: BlockType.COMMAND,
-                    text: '🔌 Pin digital [PIN] estado [STATE]',
+                    text: 'Pin digital [PIN] estado [STATE]',
                     arguments: {
                         PIN: {
                             type: ArgumentType.NUMBER,
@@ -270,7 +272,7 @@ class PlayIoTBlocks {
                 {
                     opcode: 'analogWrite',
                     blockType: BlockType.COMMAND,
-                    text: '🔌 Pin PWM [PIN] valor [VALUE]',
+                    text: 'Pin PWM [PIN] valor [VALUE]',
                     arguments: {
                         PIN: {
                             type: ArgumentType.NUMBER,
@@ -290,7 +292,7 @@ class PlayIoTBlocks {
                 {
                     opcode: 'setRGBColor',
                     blockType: BlockType.COMMAND,
-                    text: '🌈 LED RGB [LED] R:[R] G:[G] B:[B]',
+                    text: 'LED RGB [LED] R:[R] G:[G] B:[B]',
                     arguments: {
                         LED: {
                             type: ArgumentType.NUMBER,
@@ -314,7 +316,7 @@ class PlayIoTBlocks {
                 {
                     opcode: 'setRGBColorHex',
                     blockType: BlockType.COMMAND,
-                    text: '🌈 LED RGB [LED] color [COLOR]',
+                    text: 'LED RGB [LED] color [COLOR]',
                     arguments: {
                         LED: {
                             type: ArgumentType.NUMBER,
@@ -330,7 +332,7 @@ class PlayIoTBlocks {
                 {
                     opcode: 'rgbOff',
                     blockType: BlockType.COMMAND,
-                    text: '🌈 Apagar LED RGB [LED]',
+                    text: 'Apagar LED RGB [LED]',
                     arguments: {
                         LED: {
                             type: ArgumentType.NUMBER,
@@ -342,7 +344,7 @@ class PlayIoTBlocks {
                 {
                     opcode: 'allRGBOff',
                     blockType: BlockType.COMMAND,
-                    text: '🌈 Apagar todos los LEDs RGB'
+                    text: 'Apagar todos los LEDs RGB'
                 },
 
                 '---',
@@ -351,7 +353,7 @@ class PlayIoTBlocks {
                 {
                     opcode: 'servoWrite',
                     blockType: BlockType.COMMAND,
-                    text: '🔄 Servo [SERVO] ángulo [ANGLE]°',
+                    text: 'Servo [SERVO] ángulo [ANGLE]°',
                     arguments: {
                         SERVO: {
                             type: ArgumentType.NUMBER,
@@ -367,11 +369,51 @@ class PlayIoTBlocks {
 
                 '---',
 
+                // PANTALLA OLED
+                {
+                    opcode: 'oledText',
+                    blockType: BlockType.COMMAND,
+                    text: 'OLED mostrar texto [TEXT] tamaño [SIZE]',
+                    arguments: {
+                        TEXT: {
+                            type: ArgumentType.STRING,
+                            defaultValue: 'Hola'
+                        },
+                        SIZE: {
+                            type: ArgumentType.NUMBER,
+                            menu: 'textSize',
+                            defaultValue: '1'
+                        }
+                    }
+                },
+                {
+                    opcode: 'oledNumber',
+                    blockType: BlockType.COMMAND,
+                    text: 'OLED mostrar [LABEL] valor [VALUE]',
+                    arguments: {
+                        LABEL: {
+                            type: ArgumentType.STRING,
+                            defaultValue: 'Temperatura'
+                        },
+                        VALUE: {
+                            type: ArgumentType.NUMBER,
+                            defaultValue: 25
+                        }
+                    }
+                },
+                {
+                    opcode: 'oledClear',
+                    blockType: BlockType.COMMAND,
+                    text: 'OLED limpiar pantalla'
+                },
+
+                '---',
+
                 // ENTRADAS DIGITALES
                 {
                     opcode: 'readButton',
                     blockType: BlockType.BOOLEAN,
-                    text: '🔘 Botón [BUTTON] presionado?',
+                    text: 'Botón [BUTTON] presionado?',
                     arguments: {
                         BUTTON: {
                             type: ArgumentType.STRING,
@@ -387,7 +429,7 @@ class PlayIoTBlocks {
                 {
                     opcode: 'readAnalog',
                     blockType: BlockType.REPORTER,
-                    text: '📊 Leer [ANALOG]',
+                    text: 'Leer [ANALOG]',
                     arguments: {
                         ANALOG: {
                             type: ArgumentType.STRING,
@@ -403,7 +445,7 @@ class PlayIoTBlocks {
                 {
                     opcode: 'readJoystickAxis',
                     blockType: BlockType.REPORTER,
-                    text: '🕹️ Joystick eje [AXIS]',
+                    text: 'Joystick eje [AXIS]',
                     arguments: {
                         AXIS: {
                             type: ArgumentType.STRING,
@@ -415,7 +457,7 @@ class PlayIoTBlocks {
                 {
                     opcode: 'joystickLimit',
                     blockType: BlockType.BOOLEAN,
-                    text: '🕹️ Joystick [DIRECTION]?',
+                    text: 'Joystick [DIRECTION]?',
                     arguments: {
                         DIRECTION: {
                             type: ArgumentType.STRING,
@@ -466,6 +508,14 @@ class PlayIoTBlocks {
                         { text: 'Servo 2 (Pin 27)', value: '2' }
                     ]
                 },
+                textSize: {
+                    acceptReporters: false,
+                    items: [
+                        { text: 'Pequeño (1)', value: '1' },
+                        { text: 'Normal (2)', value: '2' },
+                        { text: 'Grande (3)', value: '3' }
+                    ]
+                },
                 buttons: {
                     acceptReporters: false,
                     items: [
@@ -492,10 +542,10 @@ class PlayIoTBlocks {
                 joystickDirections: {
                     acceptReporters: false,
                     items: [
-                        { text: '↑ Arriba', value: 'up' },
-                        { text: '↓ Abajo', value: 'down' },
-                        { text: '← Izquierda', value: 'left' },
-                        { text: '→ Derecha', value: 'right' }
+                        { text: 'Arriba', value: 'up' },
+                        { text: 'Abajo', value: 'down' },
+                        { text: 'Izquierda', value: 'left' },
+                        { text: 'Derecha', value: 'right' }
                     ]
                 }
             }
@@ -506,7 +556,7 @@ class PlayIoTBlocks {
 
     async digitalWrite(args) {
         if (!this.peripheral.isConnected()) {
-            console.warn('⚠️ No conectado');
+            console.warn('No conectado');
             return;
         }
         
@@ -521,19 +571,18 @@ class PlayIoTBlocks {
             });
             
             await this.peripheral._serial.write(json);
-            console.log(`📌 Pin ${args.PIN} -> ${args.STATE}`);
+            console.log(`Pin ${args.PIN} -> ${args.STATE}`);
         } catch (e) {
-            console.error('❌ Error en digitalWrite:', e);
-            // Si el dispositivo se perdió, no relanzar el error
+            console.error('Error en digitalWrite:', e);
             if (e.message && e.message.includes('device has been lost')) {
-                console.warn('⚠️ Dispositivo desconectado durante escritura');
+                console.warn('Dispositivo desconectado durante escritura');
             }
         }
     }
 
     async analogWrite(args) {
         if (!this.peripheral.isConnected()) {
-            console.warn('⚠️ No conectado');
+            console.warn('No conectado');
             return;
         }
         
@@ -549,18 +598,18 @@ class PlayIoTBlocks {
             });
             
             await this.peripheral._serial.write(json);
-            console.log(`📊 PWM Pin ${args.PIN} -> ${value}`);
+            console.log(`PWM Pin ${args.PIN} -> ${value}`);
         } catch (e) {
-            console.error('❌ Error en analogWrite:', e);
+            console.error('Error en analogWrite:', e);
             if (e.message && e.message.includes('device has been lost')) {
-                console.warn('⚠️ Dispositivo desconectado durante escritura');
+                console.warn('Dispositivo desconectado durante escritura');
             }
         }
     }
 
     async setRGBColor(args) {
         if (!this.peripheral.isConnected()) {
-            console.warn('⚠️ No conectado');
+            console.warn('No conectado');
             return;
         }
         
@@ -582,18 +631,18 @@ class PlayIoTBlocks {
             });
             
             await this.peripheral._serial.write(json);
-            console.log(`🎨 RGB LED ${led} -> R:${r} G:${g} B:${b}`);
+            console.log(`RGB LED ${led} -> R:${r} G:${g} B:${b}`);
         } catch (e) {
-            console.error('❌ Error en setRGBColor:', e);
+            console.error('Error en setRGBColor:', e);
             if (e.message && e.message.includes('device has been lost')) {
-                console.warn('⚠️ Dispositivo desconectado durante escritura');
+                console.warn('Dispositivo desconectado durante escritura');
             }
         }
     }
 
     async setRGBColorHex(args) {
         if (!this.peripheral.isConnected()) {
-            console.warn('⚠️ No conectado');
+            console.warn('No conectado');
             return;
         }
         
@@ -618,18 +667,18 @@ class PlayIoTBlocks {
             });
             
             await this.peripheral._serial.write(json);
-            console.log(`🎨 RGB LED ${led} -> ${color}`);
+            console.log(`RGB LED ${led} -> ${color}`);
         } catch (e) {
-            console.error('❌ Error en setRGBColorHex:', e);
+            console.error('Error en setRGBColorHex:', e);
             if (e.message && e.message.includes('device has been lost')) {
-                console.warn('⚠️ Dispositivo desconectado durante escritura');
+                console.warn('Dispositivo desconectado durante escritura');
             }
         }
     }
 
     async rgbOff(args) {
         if (!this.peripheral.isConnected()) {
-            console.warn('⚠️ No conectado');
+            console.warn('No conectado');
             return;
         }
         
@@ -647,18 +696,18 @@ class PlayIoTBlocks {
             });
             
             await this.peripheral._serial.write(json);
-            console.log(`💡 RGB LED ${led} apagado`);
+            console.log(`RGB LED ${led} apagado`);
         } catch (e) {
-            console.error('❌ Error en rgbOff:', e);
+            console.error('Error en rgbOff:', e);
             if (e.message && e.message.includes('device has been lost')) {
-                console.warn('⚠️ Dispositivo desconectado durante escritura');
+                console.warn('Dispositivo desconectado durante escritura');
             }
         }
     }
 
     async allRGBOff() {
         if (!this.peripheral.isConnected()) {
-            console.warn('⚠️ No conectado');
+            console.warn('No conectado');
             return;
         }
         
@@ -676,18 +725,18 @@ class PlayIoTBlocks {
                 });
                 await this.peripheral._serial.write(json);
             }
-            console.log('💡 Todos los LEDs RGB apagados');
+            console.log('Todos los LEDs RGB apagados');
         } catch (e) {
-            console.error('❌ Error en allRGBOff:', e);
+            console.error('Error en allRGBOff:', e);
             if (e.message && e.message.includes('device has been lost')) {
-                console.warn('⚠️ Dispositivo desconectado durante escritura');
+                console.warn('Dispositivo desconectado durante escritura');
             }
         }
     }
 
     async servoWrite(args) {
         if (!this.peripheral.isConnected()) {
-            console.warn('⚠️ No conectado');
+            console.warn('No conectado');
             return;
         }
         
@@ -705,11 +754,88 @@ class PlayIoTBlocks {
             });
             
             await this.peripheral._serial.write(json);
-            console.log(`🔄 Servo ${servo} -> ${angle}°`);
+            console.log(`Servo ${servo} -> ${angle}°`);
         } catch (e) {
-            console.error('❌ Error en servoWrite:', e);
+            console.error('Error en servoWrite:', e);
             if (e.message && e.message.includes('device has been lost')) {
-                console.warn('⚠️ Dispositivo desconectado durante escritura');
+                console.warn('Dispositivo desconectado durante escritura');
+            }
+        }
+    }
+
+    // BLOQUES OLED
+    async oledText(args) {
+        if (!this.peripheral.isConnected()) {
+            console.warn('No conectado');
+            return;
+        }
+        
+        try {
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'oledText',
+                    text: args.TEXT,
+                    size: parseInt(args.SIZE)
+                }]
+            });
+            
+            await this.peripheral._serial.write(json);
+            console.log(`OLED -> ${args.TEXT}`);
+        } catch (e) {
+            console.error('Error en oledText:', e);
+            if (e.message && e.message.includes('device has been lost')) {
+                console.warn('Dispositivo desconectado durante escritura');
+            }
+        }
+    }
+
+    async oledNumber(args) {
+        if (!this.peripheral.isConnected()) {
+            console.warn('No conectado');
+            return;
+        }
+        
+        try {
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'oledNumber',
+                    label: args.LABEL,
+                    value: parseInt(args.VALUE)
+                }]
+            });
+            
+            await this.peripheral._serial.write(json);
+            console.log(`OLED -> ${args.LABEL}: ${args.VALUE}`);
+        } catch (e) {
+            console.error('Error en oledNumber:', e);
+            if (e.message && e.message.includes('device has been lost')) {
+                console.warn('Dispositivo desconectado durante escritura');
+            }
+        }
+    }
+
+    async oledClear(args) {
+        if (!this.peripheral.isConnected()) {
+            console.warn('No conectado');
+            return;
+        }
+        
+        try {
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'oledClear'
+                }]
+            });
+            
+            await this.peripheral._serial.write(json);
+            console.log('OLED -> LIMPIAR');
+        } catch (e) {
+            console.error('Error en oledClear:', e);
+            if (e.message && e.message.includes('device has been lost')) {
+                console.warn('Dispositivo desconectado durante escritura');
             }
         }
     }
