@@ -1,39 +1,29 @@
 const BlockType = require('../../extension-support/block-type');
 const ArgumentType = require('../../extension-support/argument-type');
-const PlayIotSerial = require('./playiot-serial');
+const PlayMeSerial = require('./playme-serial');
 const formatMessage = require('format-message');
 
-class PlayIoTPeripheral {
+class PlayMePeripheral {
     constructor(runtime, extensionId) {
 
         this._runtime = runtime;
         this._extensionId = extensionId;
-        this._serial = new PlayIotSerial();
+        this._serial = new PlayMeSerial();
         this.devices = [];
         this._scanning = false;
         this._connectedDeviceId = null;
-        this.buffer = ''; // Buffer para datos incompletos
+        this.buffer = '';
 
-        // Variables para almacenar datos de sensores
         this.sensorData = {
             button_A: 0,
             button_B: 0,
-            analog_POT: 0,
-            analog_X: 0,
-            analog_Y: 0,
-            analog_ADC33: 0,
-            analog_ADC34: 0,
-            analog_ADC35: 0,
-            upLimit: 0,
-            downLimit: 0,
-            rightLimit: 0,
-            leftLimit: 0
+            analog_POT: 0
         };
 
         this._runtime.registerPeripheralExtension(extensionId, this);
         this._autoScan();
-        window.playIotSerial = this._serial;
-        window.playIotPeripheral = this;
+        window.playMeSerial = this._serial;
+        window.playMePeripheral = this;
     }
 
     async _autoScan() {
@@ -94,7 +84,7 @@ class PlayIoTPeripheral {
 
     getPeripheralDeviceList() {
         return this.devices.map((port, index) => {
-            const deviceId = `playiot_${index}`;
+            const deviceId = `playme_${index}`;
             return {
                 id: deviceId,
                 peripheralId: deviceId,
@@ -120,10 +110,8 @@ class PlayIoTPeripheral {
             await this._serial.connect(port);
             this._connectedDeviceId = peripheralId;
 
-            // Configurar el handler de datos
             this._setupDataHandler();
 
-            // Configurar handler de desconexión inesperada
             this._serial.onDisconnect = () => {
                 console.log('Desconexión inesperada detectada');
                 this._connectedDeviceId = null;
@@ -143,11 +131,9 @@ class PlayIoTPeripheral {
         }
     }
 
-    // Configurar el procesamiento de datos
     _setupDataHandler() {
         if (!this._serial) return;
 
-        // Usar el callback onData
         this._serial.onData = (data) => {
             if (data.inputs) {
                 Object.keys(data.inputs).forEach(key => {
@@ -159,65 +145,32 @@ class PlayIoTPeripheral {
         console.log('Handler de datos configurado');
     }
 
-    // Procesamiento robusto de datos de sensores
-    _processSensorData(text) {
-        this.buffer += text;
-        const lines = this.buffer.split('\n');
-        this.buffer = lines.pop() || ''; // Guardar última línea incompleta
-
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-
-            try {
-                const data = JSON.parse(trimmed);
-                if (data.inputs) {
-                    // Actualizar datos de sensores
-                    Object.keys(data.inputs).forEach(key => {
-                        if (key in this.sensorData) {
-                            this.sensorData[key] = data.inputs[key];
-                        }
-                    });
-                }
-            } catch (e) {
-                console.warn('Error parseando JSON:', trimmed.substring(0, 50));
-            }
-        }
-    }
-
     async disconnect() {
         console.log('Desconectando dispositivo...');
 
         try {
-            // Limpiar buffer de datos
             this.buffer = '';
 
-            // Resetear datos de sensores
             Object.keys(this.sensorData).forEach(key => {
                 this.sensorData[key] = 0;
             });
 
-            // Desconectar el serial
             if (this._serial) {
                 await this._serial.disconnect();
             }
 
-            // Limpiar ID de dispositivo conectado
             this._connectedDeviceId = null;
 
             console.log('Desconexión completada');
 
-            // Notificar a Scratch
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
 
         } catch (error) {
             console.error('Error durante desconexión:', error);
 
-            // Forzar limpieza incluso si hay error
             this.buffer = '';
             this._connectedDeviceId = null;
 
-            // Notificar desconexión de todos modos
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
         }
     }
@@ -227,7 +180,7 @@ class PlayIoTPeripheral {
     }
 
     getPeripheralDeviceIds() {
-        return this.devices.map((_, i) => `playiot_${i}`);
+        return this.devices.map((_, i) => `playme_${i}`);
     }
 
     /**
@@ -241,9 +194,9 @@ class PlayIoTPeripheral {
         try {
             await this._serial.claimPort(port);
             this._setupDataHandler();
-            console.log('✅ PlayIoT re-inicializado correctamente.');
+            console.log('✅ PlayMe re-inicializado correctamente.');
         } catch (e) {
-            console.error('❌ Error re-inicializando PlayIoT:', e);
+            console.error('❌ Error re-inicializando PlayMe:', e);
         }
     }
 
@@ -253,26 +206,25 @@ class PlayIoTPeripheral {
 
     getPeripheralName(deviceId) {
         const index = parseInt(deviceId.split('_')[1]);
-        return `PlayIoT ESP32 #${index + 1}`;
+        return `PlayMe Device #${index + 1}`;
     }
 }
 
-class PlayIoTBlocks {
-    constructor(runtime) {
+class PlayMe {
+    constructor(runtime, extensionId) {
         this.runtime = runtime;
-        this.peripheral = new PlayIoTPeripheral(runtime, 'playiot');
+        this.peripheral = new PlayMePeripheral(runtime, extensionId);
     }
 
     getInfo() {
         return {
-            id: 'playiot',
-            name: 'PlayIoT',
-            color1: '#808080',
-            color2: '#666666',
-            color3: '#4d4d4d',
+            id: 'playme',
+            name: 'PlayMe',
+            color1: '#FF6B6B',
+            color2: '#EE5A52',
+            color3: '#C92A2A',
             showStatusButton: true,
             blocks: [
-                // ========== SALIDAS DIGITALES ==========
                 {
                     opcode: 'digitalWrite',
                     blockType: BlockType.COMMAND,
@@ -309,108 +261,6 @@ class PlayIoTBlocks {
                     },
                     category: 'Salidas Digitales'
                 },
-
-                // ========== PWM Y VELOCIDAD ==========
-                {
-                    opcode: 'analogWrite',
-                    blockType: BlockType.COMMAND,
-                    text: 'Pin PWM [PIN] valor [VALUE]',
-                    arguments: {
-                        PIN: {
-                            type: ArgumentType.NUMBER,
-                            menu: 'pwmPins',
-                            defaultValue: '12'
-                        },
-                        VALUE: {
-                            type: ArgumentType.NUMBER,
-                            defaultValue: 128
-                        }
-                    },
-                    category: 'Motores y PWM'
-                },
-                {
-                    opcode: 'motorSpeed',
-                    blockType: BlockType.COMMAND,
-                    text: 'Motor [MOTOR] velocidad [SPEED] %',
-                    arguments: {
-                        MOTOR: {
-                            type: ArgumentType.NUMBER,
-                            menu: 'motors',
-                            defaultValue: '1'
-                        },
-                        SPEED: {
-                            type: ArgumentType.NUMBER,
-                            defaultValue: 50
-                        }
-                    },
-                    category: 'Motores y PWM'
-                },
-                {
-                    opcode: 'motorStop',
-                    blockType: BlockType.COMMAND,
-                    text: 'Parar motor [MOTOR]',
-                    arguments: {
-                        MOTOR: {
-                            type: ArgumentType.NUMBER,
-                            menu: 'motors',
-                            defaultValue: '1'
-                        }
-                    },
-                    category: 'Motores y PWM'
-                },
-                {
-                    opcode: 'allMotorsStop',
-                    blockType: BlockType.COMMAND,
-                    text: 'Parar todos los motores',
-                    category: 'Motores y PWM'
-                },
-
-                // ========== LEDS INDIVIDUALES ==========
-                {
-                    opcode: 'ledOn',
-                    blockType: BlockType.COMMAND,
-                    text: 'Encender LED [LED]',
-                    arguments: {
-                        LED: {
-                            type: ArgumentType.NUMBER,
-                            menu: 'leds',
-                            defaultValue: '0'
-                        }
-                    },
-                    category: 'LEDs'
-                },
-                {
-                    opcode: 'ledOff',
-                    blockType: BlockType.COMMAND,
-                    text: 'Apagar LED [LED]',
-                    arguments: {
-                        LED: {
-                            type: ArgumentType.NUMBER,
-                            menu: 'leds',
-                            defaultValue: '0'
-                        }
-                    },
-                    category: 'LEDs'
-                },
-                {
-                    opcode: 'ledBlink',
-                    blockType: BlockType.COMMAND,
-                    text: 'Parpadear LED [LED] [TIMES] veces',
-                    arguments: {
-                        LED: {
-                            type: ArgumentType.NUMBER,
-                            menu: 'leds',
-                            defaultValue: '0'
-                        },
-                        TIMES: {
-                            type: ArgumentType.NUMBER,
-                            defaultValue: 3
-                        }
-                    },
-                    category: 'LEDs'
-                },
-
-                // ========== LEDS RGB ==========
                 {
                     opcode: 'setRGBColor',
                     blockType: BlockType.COMMAND,
@@ -502,61 +352,6 @@ class PlayIoTBlocks {
                     },
                     category: 'RGB'
                 },
-
-                // ========== SERVOS ==========
-                {
-                    opcode: 'servoWrite',
-                    blockType: BlockType.COMMAND,
-                    text: 'Servo [SERVO] ángulo [ANGLE]°',
-                    arguments: {
-                        SERVO: {
-                            type: ArgumentType.NUMBER,
-                            menu: 'servos',
-                            defaultValue: '0'
-                        },
-                        ANGLE: {
-                            type: ArgumentType.NUMBER,
-                            defaultValue: 90
-                        }
-                    },
-                    category: 'Servos'
-                },
-                {
-                    opcode: 'servoCenter',
-                    blockType: BlockType.COMMAND,
-                    text: 'Servo [SERVO] al centro',
-                    arguments: {
-                        SERVO: {
-                            type: ArgumentType.NUMBER,
-                            menu: 'servos',
-                            defaultValue: '0'
-                        }
-                    },
-                    category: 'Servos'
-                },
-                {
-                    opcode: 'servoSweep',
-                    blockType: BlockType.COMMAND,
-                    text: 'Servo [SERVO] barrido [START]° a [END]°',
-                    arguments: {
-                        SERVO: {
-                            type: ArgumentType.NUMBER,
-                            menu: 'servos',
-                            defaultValue: '0'
-                        },
-                        START: {
-                            type: ArgumentType.NUMBER,
-                            defaultValue: 0
-                        },
-                        END: {
-                            type: ArgumentType.NUMBER,
-                            defaultValue: 180
-                        }
-                    },
-                    category: 'Servos'
-                },
-
-                // ========== PANTALLA OLED ==========
                 {
                     opcode: 'oledText',
                     blockType: BlockType.COMMAND,
@@ -613,8 +408,6 @@ class PlayIoTBlocks {
                     },
                     category: 'Pantalla OLED'
                 },
-
-                // ========== BOTONES Y ENTRADA ==========
                 {
                     opcode: 'readButton',
                     blockType: BlockType.BOOLEAN,
@@ -628,26 +421,6 @@ class PlayIoTBlocks {
                     },
                     category: 'Botones'
                 },
-                {
-                    opcode: 'buttonPressed',
-                    blockType: BlockType.COMMAND,
-                    text: 'Si botón [BUTTON] presionado [CONDITION]',
-                    arguments: {
-                        BUTTON: {
-                            type: ArgumentType.STRING,
-                            menu: 'buttons',
-                            defaultValue: 'A'
-                        },
-                        CONDITION: {
-                            type: ArgumentType.STRING,
-                            menu: 'buttonCondition',
-                            defaultValue: 'press'
-                        }
-                    },
-                    category: 'Botones'
-                },
-
-                // ========== ENTRADAS ANALÓGICAS ==========
                 {
                     opcode: 'readAnalog',
                     blockType: BlockType.REPORTER,
@@ -698,48 +471,6 @@ class PlayIoTBlocks {
                         }
                     },
                     category: 'Entradas Analógicas'
-                },
-
-                // ========== JOYSTICK ==========
-                {
-                    opcode: 'readJoystickAxis',
-                    blockType: BlockType.REPORTER,
-                    text: 'Joystick eje [AXIS]',
-                    arguments: {
-                        AXIS: {
-                            type: ArgumentType.STRING,
-                            menu: 'joystickAxis',
-                            defaultValue: 'X'
-                        }
-                    },
-                    category: 'Joystick'
-                },
-                {
-                    opcode: 'joystickLimit',
-                    blockType: BlockType.BOOLEAN,
-                    text: 'Joystick [DIRECTION]?',
-                    arguments: {
-                        DIRECTION: {
-                            type: ArgumentType.STRING,
-                            menu: 'joystickDirections',
-                            defaultValue: 'up'
-                        }
-                    },
-                    category: 'Joystick'
-                },
-                {
-                    opcode: 'joystickAngle',
-                    blockType: BlockType.REPORTER,
-                    text: 'Ángulo Joystick',
-                    arguments: {},
-                    category: 'Joystick'
-                },
-                {
-                    opcode: 'joystickDistance',
-                    blockType: BlockType.REPORTER,
-                    text: 'Distancia Joystick',
-                    arguments: {},
-                    category: 'Joystick'
                 }
             ],
             menus: {
@@ -749,15 +480,6 @@ class PlayIoTBlocks {
                         { text: 'Pin 2', value: '2' },
                         { text: 'Pin 5', value: '5' },
                         { text: 'Pin 23', value: '23' }
-                    ]
-                },
-                pwmPins: {
-                    acceptReporters: true,
-                    items: [
-                        { text: 'Pin 12 (M1A)', value: '12' },
-                        { text: 'Pin 13 (M1B)', value: '13' },
-                        { text: 'Pin 18 (M2A)', value: '18' },
-                        { text: 'Pin 19 (M2B)', value: '19' }
                     ]
                 },
                 digitalState: {
@@ -772,14 +494,6 @@ class PlayIoTBlocks {
                     items: [
                         { text: 'ENCENDIDO', value: 'on' },
                         { text: 'APAGADO', value: 'off' }
-                    ]
-                },
-                leds: {
-                    acceptReporters: true,
-                    items: [
-                        { text: 'LED 0', value: '0' },
-                        { text: 'LED 1', value: '1' },
-                        { text: 'LED 2', value: '2' }
                     ]
                 },
                 rgbLeds: {
@@ -801,21 +515,6 @@ class PlayIoTBlocks {
                         { text: 'Magenta', value: 'magenta' },
                         { text: 'Blanco', value: 'white' },
                         { text: 'Negro', value: 'black' }
-                    ]
-                },
-                motors: {
-                    acceptReporters: true,
-                    items: [
-                        { text: 'Motor 1', value: '1' },
-                        { text: 'Motor 2', value: '2' }
-                    ]
-                },
-                servos: {
-                    acceptReporters: true,
-                    items: [
-                        { text: 'Servo 0 (Pin 25)', value: '0' },
-                        { text: 'Servo 1 (Pin 26)', value: '1' },
-                        { text: 'Servo 2 (Pin 27)', value: '2' }
                     ]
                 },
                 textSize: {
@@ -842,45 +541,16 @@ class PlayIoTBlocks {
                         { text: 'B', value: 'B' }
                     ]
                 },
-                buttonCondition: {
-                    acceptReporters: false,
-                    items: [
-                        { text: 'presionado', value: 'press' },
-                        { text: 'soltado', value: 'release' }
-                    ]
-                },
                 analogInputs: {
                     acceptReporters: false,
                     items: [
-                        { text: 'Potenciómetro', value: 'POT' },
-                        { text: 'ADC 33', value: 'ADC33' },
-                        { text: 'ADC 34', value: 'ADC34' },
-                        { text: 'ADC 35', value: 'ADC35' }
-                    ]
-                },
-                joystickAxis: {
-                    acceptReporters: false,
-                    items: [
-                        { text: 'X', value: 'X' },
-                        { text: 'Y', value: 'Y' }
-                    ]
-                },
-                joystickDirections: {
-                    acceptReporters: false,
-                    items: [
-                        { text: 'Arriba', value: 'up' },
-                        { text: 'Abajo', value: 'down' },
-                        { text: 'Izquierda', value: 'left' },
-                        { text: 'Derecha', value: 'right' }
+                        { text: 'Potenciómetro', value: 'POT' }
                     ]
                 }
             }
         };
     }
 
-    // ===== IMPLEMENTACIÓN DE BLOQUES =====
-
-    // SALIDAS DIGITALES
     async digitalWrite(args) {
         if (!this.peripheral.isConnected()) {
             console.warn('No conectado');
@@ -928,179 +598,6 @@ class PlayIoTBlocks {
         }
     }
 
-    // PWM Y MOTORES
-    async analogWrite(args) {
-        if (!this.peripheral.isConnected()) {
-            console.warn('No conectado');
-            return;
-        }
-
-        try {
-            const value = Math.max(0, Math.min(255, parseInt(args.VALUE)));
-            const json = JSON.stringify({
-                command: 'outputsQueue',
-                testValue: [{
-                    command: 'analogWrite',
-                    pin: parseInt(args.PIN),
-                    value: value
-                }]
-            });
-
-            await this.peripheral._serial.write(json);
-            console.log(`PWM Pin ${args.PIN} -> ${value}`);
-        } catch (e) {
-            console.error('Error en analogWrite:', e);
-        }
-    }
-
-    async motorSpeed(args) {
-        if (!this.peripheral.isConnected()) {
-            console.warn('No conectado');
-            return;
-        }
-
-        try {
-            const motor = parseInt(args.MOTOR);
-            const speed = Math.max(0, Math.min(100, parseInt(args.SPEED)));
-            const pwmValue = Math.round(speed * 2.55); // 0-255
-
-            const json = JSON.stringify({
-                command: 'outputsQueue',
-                testValue: [{
-                    command: 'motorSpeed',
-                    motor: motor,
-                    speed: speed,
-                    pwmValue: pwmValue
-                }]
-            });
-
-            await this.peripheral._serial.write(json);
-            console.log(`Motor ${motor} -> ${speed}%`);
-        } catch (e) {
-            console.error('Error en motorSpeed:', e);
-        }
-    }
-
-    async motorStop(args) {
-        if (!this.peripheral.isConnected()) {
-            console.warn('No conectado');
-            return;
-        }
-
-        try {
-            const motor = parseInt(args.MOTOR);
-            const json = JSON.stringify({
-                command: 'outputsQueue',
-                testValue: [{
-                    command: 'motorStop',
-                    motor: motor
-                }]
-            });
-
-            await this.peripheral._serial.write(json);
-            console.log(`Motor ${motor} parado`);
-        } catch (e) {
-            console.error('Error en motorStop:', e);
-        }
-    }
-
-    async allMotorsStop() {
-        if (!this.peripheral.isConnected()) {
-            console.warn('No conectado');
-            return;
-        }
-
-        try {
-            const json = JSON.stringify({
-                command: 'outputsQueue',
-                testValue: [{
-                    command: 'allMotorsStop'
-                }]
-            });
-
-            await this.peripheral._serial.write(json);
-            console.log('Todos los motores parados');
-        } catch (e) {
-            console.error('Error en allMotorsStop:', e);
-        }
-    }
-
-    // LEDS INDIVIDUALES
-    async ledOn(args) {
-        if (!this.peripheral.isConnected()) {
-            console.warn('No conectado');
-            return;
-        }
-
-        try {
-            const led = parseInt(args.LED);
-            const json = JSON.stringify({
-                command: 'outputsQueue',
-                testValue: [{
-                    command: 'digitalWrite',
-                    pin: led,
-                    value: 1
-                }]
-            });
-
-            await this.peripheral._serial.write(json);
-            console.log(`LED ${led} encendido`);
-        } catch (e) {
-            console.error('Error en ledOn:', e);
-        }
-    }
-
-    async ledOff(args) {
-        if (!this.peripheral.isConnected()) {
-            console.warn('No conectado');
-            return;
-        }
-
-        try {
-            const led = parseInt(args.LED);
-            const json = JSON.stringify({
-                command: 'outputsQueue',
-                testValue: [{
-                    command: 'digitalWrite',
-                    pin: led,
-                    value: 0
-                }]
-            });
-
-            await this.peripheral._serial.write(json);
-            console.log(`LED ${led} apagado`);
-        } catch (e) {
-            console.error('Error en ledOff:', e);
-        }
-    }
-
-    async ledBlink(args) {
-        if (!this.peripheral.isConnected()) {
-            console.warn('No conectado');
-            return;
-        }
-
-        try {
-            const led = parseInt(args.LED);
-            const times = parseInt(args.TIMES);
-
-            const json = JSON.stringify({
-                command: 'outputsQueue',
-                testValue: [{
-                    command: 'ledBlink',
-                    pin: led,
-                    times: times
-                }]
-            });
-
-            await this.peripheral._serial.write(json);
-            console.log(`LED ${led} parpadeando ${times} veces`);
-        } catch (e) {
-            console.error('Error en ledBlink:', e);
-        }
-    }
-
-    // LEDS RGB
     async setRGBColor(args) {
         if (!this.peripheral.isConnected()) {
             console.warn('No conectado');
@@ -1287,86 +784,6 @@ class PlayIoTBlocks {
         }
     }
 
-    // SERVOS
-    async servoWrite(args) {
-        if (!this.peripheral.isConnected()) {
-            console.warn('No conectado');
-            return;
-        }
-
-        try {
-            const servo = parseInt(args.SERVO);
-            const angle = Math.max(0, Math.min(180, parseInt(args.ANGLE)));
-
-            const json = JSON.stringify({
-                command: 'outputsQueue',
-                testValue: [{
-                    command: 'servoWrite',
-                    pin: servo,
-                    value: angle
-                }]
-            });
-
-            await this.peripheral._serial.write(json);
-            console.log(`Servo ${servo} -> ${angle}°`);
-        } catch (e) {
-            console.error('Error en servoWrite:', e);
-        }
-    }
-
-    async servoCenter(args) {
-        if (!this.peripheral.isConnected()) {
-            console.warn('No conectado');
-            return;
-        }
-
-        try {
-            const servo = parseInt(args.SERVO);
-            const json = JSON.stringify({
-                command: 'outputsQueue',
-                testValue: [{
-                    command: 'servoWrite',
-                    pin: servo,
-                    value: 90
-                }]
-            });
-
-            await this.peripheral._serial.write(json);
-            console.log(`Servo ${servo} al centro (90°)`);
-        } catch (e) {
-            console.error('Error en servoCenter:', e);
-        }
-    }
-
-    async servoSweep(args) {
-        if (!this.peripheral.isConnected()) {
-            console.warn('No conectado');
-            return;
-        }
-
-        try {
-            const servo = parseInt(args.SERVO);
-            const start = Math.max(0, Math.min(180, parseInt(args.START)));
-            const end = Math.max(0, Math.min(180, parseInt(args.END)));
-
-            const json = JSON.stringify({
-                command: 'outputsQueue',
-                testValue: [{
-                    command: 'servoSweep',
-                    pin: servo,
-                    startAngle: start,
-                    endAngle: end
-                }]
-            });
-
-            await this.peripheral._serial.write(json);
-            console.log(`Servo ${servo} barrido ${start}° a ${end}°`);
-        } catch (e) {
-            console.error('Error en servoSweep:', e);
-        }
-    }
-
-    // PANTALLA OLED
     async oledText(args) {
         if (!this.peripheral.isConnected()) {
             console.warn('No conectado');
@@ -1457,23 +874,11 @@ class PlayIoTBlocks {
         }
     }
 
-    // BLOQUES DE LECTURA
     readButton(args) {
         const button = args.BUTTON;
         const value = this.peripheral.sensorData[`button_${button}`];
         const isPressed = value === 1;
         return isPressed;
-    }
-
-    buttonPressed(args) {
-        const button = args.BUTTON;
-        const value = this.peripheral.sensorData[`button_${button}`];
-
-        if (args.CONDITION === 'press') {
-            return value === 1;
-        } else {
-            return value === 0;
-        }
     }
 
     readAnalog(args) {
@@ -1482,9 +887,6 @@ class PlayIoTBlocks {
 
         switch (analog) {
             case 'POT': key = 'analog_POT'; break;
-            case 'ADC33': key = 'analog_ADC33'; break;
-            case 'ADC34': key = 'analog_ADC34'; break;
-            case 'ADC35': key = 'analog_ADC35'; break;
             default: return 0;
         }
 
@@ -1497,7 +899,6 @@ class PlayIoTBlocks {
         const min = parseInt(args.MIN);
         const max = parseInt(args.MAX);
 
-        // Mapear de 0-4095 a min-max
         const mapped = Math.round(((value / 4095) * (max - min)) + min);
         return Math.max(min, Math.min(max, mapped));
     }
@@ -1507,49 +908,6 @@ class PlayIoTBlocks {
         const threshold = parseInt(args.THRESHOLD);
         return value > threshold;
     }
-
-    readJoystickAxis(args) {
-        const axis = args.AXIS;
-        const key = `analog_${axis}`;
-        const value = this.peripheral.sensorData[key] || 0;
-        return value;
-    }
-
-    joystickLimit(args) {
-        const direction = args.DIRECTION;
-        let key = '';
-
-        switch (direction) {
-            case 'up': key = 'upLimit'; break;
-            case 'down': key = 'downLimit'; break;
-            case 'left': key = 'leftLimit'; break;
-            case 'right': key = 'rightLimit'; break;
-            default: return false;
-        }
-
-        const value = this.peripheral.sensorData[key];
-        const isAtLimit = value === 1 || value === true;
-        return isAtLimit;
-    }
-
-    joystickAngle(args) {
-        const x = this.peripheral.sensorData.analog_X || 0;
-        const y = this.peripheral.sensorData.analog_Y || 0;
-
-        const angle = Math.atan2(y - 2048, x - 2048) * (180 / Math.PI);
-        return Math.round(angle + 180);
-    }
-
-    joystickDistance(args) {
-        const x = this.peripheral.sensorData.analog_X || 0;
-        const y = this.peripheral.sensorData.analog_Y || 0;
-
-        const dx = x - 2048;
-        const dy = y - 2048;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        return Math.round((distance / 2048) * 100);
-    }
 }
 
-module.exports = PlayIoTBlocks;
+module.exports = PlayMe;

@@ -1,4 +1,4 @@
-class PlayIotSerial {
+class PlayMeSerial {
     constructor() {
         this.port = null;
         this.reader = null;
@@ -11,11 +11,10 @@ class PlayIotSerial {
 
     async connect(port) {
         if (!port) {
-            console.error('❌ No se proporcionó puerto');
+            console.error('No se proporcionó puerto');
             return;
         }
 
-        // 🔄 Limpia cualquier conexión anterior antes de abrir una nueva
         await this._cleanupBeforeReconnect();
 
         this.port = port;
@@ -27,7 +26,7 @@ class PlayIotSerial {
 
             this.keepReading = true;
             this.connected = true;
-            this.buffer = ''; // 🧹 limpia buffer viejo
+            this.buffer = '';
 
             // 🔌 Hardware Reset: Forzar rampa DTR/RTS para asegurar salida de modo bootloader
             try {
@@ -39,51 +38,43 @@ class PlayIotSerial {
                 console.warn('⚠️ Error enviando señales de reset:', e.message);
             }
 
-            // 🔴 NUEVO: Esperar un poco para que se estabilice después del reset
             await new Promise(resolve => setTimeout(resolve, 1000));
+            console.log('Conectado al PlayMe');
 
-            console.log('✅ Conectado al ESP32');
-
-            // Configurar decodificador
             const textDecoder = new TextDecoderStream();
             this.readableStreamClosed = this.port.readable.pipeTo(textDecoder.writable);
             this.reader = textDecoder.readable.getReader();
 
-            // ✨ Capturar errores del pipe
             this.readableStreamClosed.catch(err => {
                 if (err && err.message && err.message.includes('device has been lost')) {
-                    console.log('🔌 Dispositivo desconectado físicamente (pipe)');
+                    console.log('Dispositivo desconectado');
                     this._handleUnexpectedDisconnect();
                 }
             });
 
-            // Configurar escritura
             const textEncoder = new TextEncoderStream();
             const writableClosed = textEncoder.readable.pipeTo(this.port.writable);
             this.writer = textEncoder.writable.getWriter();
 
-            // ✨ Capturar errores del writable pipe
             writableClosed.catch(err => {
                 if (err && err.message && err.message.includes('device has been lost')) {
-                    console.log('🔌 Dispositivo desconectado físicamente (writable)');
+                    console.log('Dispositivo desconectado durante escritura');
                     this._handleUnexpectedDisconnect();
                 }
             });
 
-            // Iniciar lectura
             this.readLoop();
 
         } catch (err) {
-            console.error('❌ Error al conectar:', err);
+            console.error('Error al conectar:', err);
             this.connected = false;
             this.port = null;
             throw err;
         }
     }
 
-    // ✨ NUEVO: Manejar desconexión inesperada
     _handleUnexpectedDisconnect() {
-        if (!this.connected) return; // Ya se manejó
+        if (!this.connected) return;
 
         this.connected = false;
         this.keepReading = false;
@@ -97,12 +88,11 @@ class PlayIotSerial {
         this.keepReading = false;
         await this._cleanupBeforeReconnect();
         this.connected = false;
-        console.log('🔌 Puerto desconectado correctamente');
+        console.log('Puerto desconectado');
     }
 
     /**
      * 🔓 Libera los streams (reader/writer) pero mantiene el objeto port abierto.
-     * Útil para ceder el control a esptool-js sin perder el permiso del puerto.
      */
     async releasePort() {
         console.log('🔓 Liberando puerto para actualización de firmware...');
@@ -125,8 +115,6 @@ class PlayIotSerial {
 
         if (this.port) {
             try { await this.port.close(); } catch (e) { }
-            // Mantenemos la referencia this.port para que el modal la use,
-            // pero el puerto está físicamente cerrado para que esptool-js lo abra.
         }
 
         this.connected = false;
@@ -138,9 +126,8 @@ class PlayIotSerial {
      */
     async claimPort(port) {
         if (!port) return;
-        console.log('🔐 Reclamando puerto post-flasheo...');
+        console.log('🔐 Reclamando puerto post-flasheo (PlayMe)...');
         try {
-            // Usamos el método connect oficial que ya tiene toda la lógica de robustez
             await this.connect(port);
             console.log('✅ Puerto reclamado exitosamente.');
         } catch (err) {
@@ -149,14 +136,12 @@ class PlayIotSerial {
         }
     }
 
-    // 🧩 Método interno: limpia todo para evitar bucles viejos y streams bloqueados
     async _cleanupBeforeReconnect() {
         try {
             if (this.writer) {
                 await this.writer.close().catch(e => {
-                    // Ignorar si el dispositivo ya se perdió o no hay error
                     if (e && e.message && !e.message.includes('device has been lost')) {
-                        console.warn('⚠️ Error cerrando writer:', e.message);
+                        console.warn('Error cerrando writer:', e.message);
                     }
                 });
                 this.writer = null;
@@ -164,12 +149,8 @@ class PlayIotSerial {
 
             if (this.reader) {
                 try {
-                    await this.reader.cancel().catch(e => {
-                        // Ignorar errores silenciosamente
-                    });
-                } catch (e) {
-                    // Ignorar
-                }
+                    await this.reader.cancel().catch(e => { });
+                } catch (e) { }
                 this.reader = null;
             }
 
@@ -178,14 +159,12 @@ class PlayIotSerial {
                 this.readableStreamClosed = null;
             }
 
-            // ⏱️ Pequeña pausa para liberar streams
             await new Promise(resolve => setTimeout(resolve, 100));
 
             if (this.port) {
                 try {
                     await this.port.close();
                 } catch (e) {
-                    // Silenciamos "already closed" ya que es esperado si esptool-js lo cerró
                     if (e && e.name !== 'InvalidStateError' && !e.message.includes('already closed')) {
                         console.warn('⚠️ Error al cerrar puerto:', e.message);
                     }
@@ -193,13 +172,11 @@ class PlayIotSerial {
                 this.port = null;
             }
 
-            // 💡 Reset total del buffer
             this.buffer = '';
 
         } catch (err) {
-            // Ignorar errores de dispositivo perdido o errores vacíos
             if (err && err.message && !err.message.includes('device has been lost')) {
-                console.error('❌ Error en cleanup:', err);
+                console.error('Error en cleanup:', err);
             }
         }
     }
@@ -210,7 +187,6 @@ class PlayIotSerial {
                 const { value, done } = await this.reader.read();
 
                 if (done) {
-                    console.log('ℹ️ Stream terminado');
                     break;
                 }
 
@@ -219,22 +195,18 @@ class PlayIotSerial {
                 }
             }
         } catch (err) {
-            // ✨ Capturar desconexión física del dispositivo
             if (err && err.message && err.message.includes('device has been lost')) {
-                console.log('🔌 Dispositivo desconectado físicamente (readLoop)');
+                console.log('Dispositivo desconectado');
                 this._handleUnexpectedDisconnect();
                 return;
             }
 
-            // Desconexión intencional
             if (err && err.name === 'AbortError' && !this.keepReading) {
-                console.log('ℹ️ Lectura cancelada por desconexión');
                 return;
             }
 
-            // Otros errores solo si está activo
             if (this.keepReading && err) {
-                console.error('❌ Error en readLoop:', err.message || err);
+                console.error('Error en readLoop:', err.message || err);
             }
         }
     }
@@ -242,41 +214,32 @@ class PlayIotSerial {
     handleIncoming(text) {
         this.buffer += text;
 
-        // Procesar línea por línea
         const lines = this.buffer.split('\n');
-
-        // Guardar la última línea (puede estar incompleta)
         this.buffer = lines.pop() || '';
 
         for (let line of lines) {
             line = line.trim();
 
-            // Ignorar líneas vacías
             if (!line) continue;
 
-            // Solo procesar si parece un JSON (empieza con { y termina con })
             if (line.startsWith('{') && line.endsWith('}')) {
                 try {
                     const data = JSON.parse(line);
-                    console.log('📥 RX:', data);
+                    console.log('RX:', data);
 
-                    // Si hay un handler externo (para sensores), llamarlo
                     if (this.onData) {
                         this.onData(data);
                     }
                 } catch (err) {
-                    // Solo mostrar error si la línea parece ser JSON
                     if (line.includes('"inputs"') || line.includes('"ok"')) {
-                        console.warn('⚠️ JSON inválido:', line.substring(0, 60));
+                        console.warn('JSON inválido:', line.substring(0, 60));
                     }
                 }
             }
         }
 
-        // Limpiar buffer si crece mucho
         if (this.buffer.length > 1024) {
-            console.warn('⚠️ Buffer muy grande, limpiando');
-            // Intentar mantener solo desde el último '{'
+            console.warn('Buffer muy grande, limpiando');
             const lastBrace = this.buffer.lastIndexOf('{');
             if (lastBrace !== -1) {
                 this.buffer = this.buffer.substring(lastBrace);
@@ -288,22 +251,21 @@ class PlayIotSerial {
 
     async write(msg) {
         if (!this.writer) {
-            console.error('❌ No hay conexión activa para escribir');
+            console.error('No hay conexión activa');
             return;
         }
 
         try {
             await this.writer.write(msg + '\n');
-            console.log('📤 TX:', msg);
+            console.log('TX:', msg);
         } catch (err) {
-            // ✨ Capturar desconexión durante escritura
             if (err && err.message && err.message.includes('device has been lost')) {
-                console.log('🔌 Dispositivo desconectado durante escritura');
+                console.log('Dispositivo desconectado durante escritura');
                 this._handleUnexpectedDisconnect();
                 return;
             }
 
-            console.error('❌ Error enviando datos:', err);
+            console.error('Error enviando datos:', err);
             throw err;
         }
     }
@@ -313,4 +275,4 @@ class PlayIotSerial {
     }
 }
 
-module.exports = PlayIotSerial;
+module.exports = PlayMeSerial;
