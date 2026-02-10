@@ -28,15 +28,16 @@ class PlayMeSerial {
             this.connected = true;
             this.buffer = '';
 
-            // 🔌 Hardware Reset: Forzar rampa DTR/RTS para asegurar salida de modo bootloader
-            try {
-                await this.port.setSignals({ dataTerminalReady: false, requestToSend: true });
-                await new Promise(resolve => setTimeout(resolve, 100));
-                await this.port.setSignals({ dataTerminalReady: true, requestToSend: false });
-                await new Promise(resolve => setTimeout(resolve, 200));
-            } catch (e) {
-                console.warn('⚠️ Error enviando señales de reset:', e.message);
-            }
+            // 🔌 Hardware Reset: Deshabilitado temporalmente para PlayMe
+            // El chip USB-Serial de PlayMe no es compatible con este reset
+            // try {
+            //     await this.port.setSignals({ dataTerminalReady: false, requestToSend: true });
+            //     await new Promise(resolve => setTimeout(resolve, 100));
+            //     await this.port.setSignals({ dataTerminalReady: true, requestToSend: false });
+            //     await new Promise(resolve => setTimeout(resolve, 200));
+            // } catch (e) {
+            //     console.warn('⚠️ Error enviando señales de reset:', e.message);
+            // }
 
             await new Promise(resolve => setTimeout(resolve, 1000));
             console.log('Conectado al PlayMe');
