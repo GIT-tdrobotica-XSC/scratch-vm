@@ -38,6 +38,14 @@ class PlayMePeripheral {
                         this._runtime.constructor.PERIPHERAL_LIST_UPDATE,
                         this.getPeripheralDeviceList()
                     );
+
+                    // Auto-conectar al primer puerto autorizado (reconexión automática al abrir PlayCode)
+                    try {
+                        await this.connect('playme_0');
+                    } catch (e) {
+                        // Falla silenciosamente si el dispositivo no está conectado físicamente
+                        console.warn('Auto-connect PlayMe falló (dispositivo desconectado):', e.message);
+                    }
                 }
             }
         } catch (e) {
