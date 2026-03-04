@@ -990,7 +990,9 @@ class VirtualMachine extends EventEmitter {
      * @returns {?Promise} - a promise that resolves when the backdrop has been added
      */
     addBackdrop (md5ext, backdropObject) {
+        console.log('[VM] addBackdrop iniciando loadCostume. storage:', !!this.runtime.storage, 'renderer:', !!this.runtime.renderer, 'v2Adapter:', !!this.runtime.v2BitmapAdapter);
         return loadCostume(md5ext, backdropObject, this.runtime).then(() => {
+            console.log('[VM] loadCostume resolvió OK para:', md5ext);
             const stage = this.runtime.getTargetForStage();
             stage.addCostume(backdropObject);
             stage.setCostume(stage.getCostumes().length - 1);
