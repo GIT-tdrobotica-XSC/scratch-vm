@@ -380,7 +380,6 @@ const loadCostume = function (md5ext, costume, runtime, optVersion) {
     const AssetType = runtime.storage.AssetType;
     const assetType = (ext === 'svg') ? AssetType.ImageVector : AssetType.ImageBitmap;
 
-    console.log('[loadCostume] llamando storage.load:', md5ext, 'assetType:', assetType && assetType.name);
     const costumePromise = runtime.storage.load(assetType, md5, ext);
 
     let textLayerPromise;
@@ -392,11 +391,9 @@ const loadCostume = function (md5ext, costume, runtime, optVersion) {
 
     return Promise.all([costumePromise, textLayerPromise])
         .then(assetArray => {
-            console.log('[loadCostume] storage.load resolvió. asset[0]:', !!assetArray[0]);
             if (assetArray[0]) {
                 costume.asset = assetArray[0];
             } else {
-                console.log('[loadCostume] asset null → handleCostumeLoadError');
                 return handleCostumeLoadError(costume, runtime);
             }
 
