@@ -7,6 +7,7 @@ class PlayMeSerial {
         this.connected = false;
         this.buffer = '';
         this.readableStreamClosed = null;
+        this._lastRxTime = null;
     }
 
     async connect(port) {
@@ -227,6 +228,7 @@ class PlayMeSerial {
                 try {
                     const data = JSON.parse(line);
                     console.log('RX:', data);
+                    this._lastRxTime = Date.now();
 
                     if (this.onData) {
                         this.onData(data);

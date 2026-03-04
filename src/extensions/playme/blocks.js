@@ -193,7 +193,9 @@ class PlayMePeripheral {
         if (!this._serial || !port) return;
         try {
             await this._serial.claimPort(port);
+            this._connectedDeviceId = this._connectedDeviceId || 'playme_0';
             this._setupDataHandler();
+            this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTED);
             console.log('✅ PlayMe re-inicializado correctamente.');
         } catch (e) {
             console.error('❌ Error re-inicializando PlayMe:', e);

@@ -7,6 +7,7 @@ class PlayIotSerial {
         this.connected = false;
         this.buffer = '';
         this.readableStreamClosed = null;
+        this._lastRxTime = null;
     }
 
     async connect(port) {
@@ -259,6 +260,7 @@ class PlayIotSerial {
                 try {
                     const data = JSON.parse(line);
                     console.log('📥 RX:', data);
+                    this._lastRxTime = Date.now();
 
                     // Si hay un handler externo (para sensores), llamarlo
                     if (this.onData) {
