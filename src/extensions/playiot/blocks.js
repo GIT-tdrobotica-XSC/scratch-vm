@@ -366,6 +366,42 @@ class PlayIoTBlocks {
                     text: 'Parar todos los motores',
                     category: 'Motores y PWM'
                 },
+                {
+                    opcode: 'motorDCPins',
+                    blockType: BlockType.COMMAND,
+                    text: 'Motor pin A:[PIN_A] pin B:[PIN_B] velocidad [SPEED]',
+                    arguments: {
+                        PIN_A: {
+                            type: ArgumentType.NUMBER,
+                            defaultValue: 32
+                        },
+                        PIN_B: {
+                            type: ArgumentType.NUMBER,
+                            defaultValue: 33
+                        },
+                        SPEED: {
+                            type: ArgumentType.NUMBER,
+                            defaultValue: 200
+                        }
+                    },
+                    category: 'Motores y PWM'
+                },
+                {
+                    opcode: 'motorStopPins',
+                    blockType: BlockType.COMMAND,
+                    text: 'Detener motor pin A:[PIN_A] pin B:[PIN_B]',
+                    arguments: {
+                        PIN_A: {
+                            type: ArgumentType.NUMBER,
+                            defaultValue: 32
+                        },
+                        PIN_B: {
+                            type: ArgumentType.NUMBER,
+                            defaultValue: 33
+                        }
+                    },
+                    category: 'Motores y PWM'
+                },
 
                 // ========== LEDS INDIVIDUALES ==========
                 {
@@ -613,6 +649,129 @@ class PlayIoTBlocks {
                             defaultValue: 'Línea'
                         }
                     },
+                    category: 'Pantalla OLED'
+                },
+
+                {
+                    opcode: 'setOledAddress',
+                    blockType: BlockType.COMMAND,
+                    text: 'OLED dirección I2C [ADDRESS]',
+                    arguments: {
+                        ADDRESS: {
+                            type: ArgumentType.STRING,
+                            menu: 'oledAddress',
+                            defaultValue: '0x3C'
+                        }
+                    },
+                    category: 'Pantalla OLED'
+                },
+                {
+                    opcode: 'oledTextXY',
+                    blockType: BlockType.COMMAND,
+                    text: 'OLED texto [TEXT] X:[X] Y:[Y] tamaño [SIZE]',
+                    arguments: {
+                        TEXT: {
+                            type: ArgumentType.STRING,
+                            defaultValue: 'Hola'
+                        },
+                        X: {
+                            type: ArgumentType.NUMBER,
+                            defaultValue: 0
+                        },
+                        Y: {
+                            type: ArgumentType.NUMBER,
+                            defaultValue: 0
+                        },
+                        SIZE: {
+                            type: ArgumentType.NUMBER,
+                            menu: 'textSize',
+                            defaultValue: '1'
+                        }
+                    },
+                    category: 'Pantalla OLED'
+                },
+                {
+                    opcode: 'oledEmoji',
+                    blockType: BlockType.COMMAND,
+                    text: 'OLED emoticón [EMOJI] X:[X] Y:[Y]',
+                    arguments: {
+                        EMOJI: {
+                            type: ArgumentType.STRING,
+                            menu: 'emojiList',
+                            defaultValue: 'smile'
+                        },
+                        X: {
+                            type: ArgumentType.NUMBER,
+                            defaultValue: 48
+                        },
+                        Y: {
+                            type: ArgumentType.NUMBER,
+                            defaultValue: 16
+                        }
+                    },
+                    category: 'Pantalla OLED'
+                },
+                {
+                    opcode: 'oledDrawLine',
+                    blockType: BlockType.COMMAND,
+                    text: 'OLED línea X0:[X0] Y0:[Y0] X1:[X1] Y1:[Y1]',
+                    arguments: {
+                        X0: { type: ArgumentType.NUMBER, defaultValue: 0 },
+                        Y0: { type: ArgumentType.NUMBER, defaultValue: 0 },
+                        X1: { type: ArgumentType.NUMBER, defaultValue: 64 },
+                        Y1: { type: ArgumentType.NUMBER, defaultValue: 32 }
+                    },
+                    category: 'Pantalla OLED'
+                },
+                {
+                    opcode: 'oledDrawRect',
+                    blockType: BlockType.COMMAND,
+                    text: 'OLED rectángulo X:[X] Y:[Y] ancho:[W] alto:[H]',
+                    arguments: {
+                        X: { type: ArgumentType.NUMBER, defaultValue: 0 },
+                        Y: { type: ArgumentType.NUMBER, defaultValue: 0 },
+                        W: { type: ArgumentType.NUMBER, defaultValue: 60 },
+                        H: { type: ArgumentType.NUMBER, defaultValue: 30 }
+                    },
+                    category: 'Pantalla OLED'
+                },
+                {
+                    opcode: 'oledFillRect',
+                    blockType: BlockType.COMMAND,
+                    text: 'OLED rectángulo relleno X:[X] Y:[Y] ancho:[W] alto:[H]',
+                    arguments: {
+                        X: { type: ArgumentType.NUMBER, defaultValue: 0 },
+                        Y: { type: ArgumentType.NUMBER, defaultValue: 0 },
+                        W: { type: ArgumentType.NUMBER, defaultValue: 60 },
+                        H: { type: ArgumentType.NUMBER, defaultValue: 30 }
+                    },
+                    category: 'Pantalla OLED'
+                },
+                {
+                    opcode: 'oledDrawCircle',
+                    blockType: BlockType.COMMAND,
+                    text: 'OLED círculo X:[X] Y:[Y] radio:[R]',
+                    arguments: {
+                        X: { type: ArgumentType.NUMBER, defaultValue: 64 },
+                        Y: { type: ArgumentType.NUMBER, defaultValue: 32 },
+                        R: { type: ArgumentType.NUMBER, defaultValue: 16 }
+                    },
+                    category: 'Pantalla OLED'
+                },
+                {
+                    opcode: 'oledDrawPixel',
+                    blockType: BlockType.COMMAND,
+                    text: 'OLED pixel X:[X] Y:[Y]',
+                    arguments: {
+                        X: { type: ArgumentType.NUMBER, defaultValue: 0 },
+                        Y: { type: ArgumentType.NUMBER, defaultValue: 0 }
+                    },
+                    category: 'Pantalla OLED'
+                },
+                {
+                    opcode: 'oledDisplay',
+                    blockType: BlockType.COMMAND,
+                    text: 'OLED actualizar pantalla',
                     category: 'Pantalla OLED'
                 },
 
@@ -874,6 +1033,33 @@ class PlayIoTBlocks {
                         { text: 'Abajo', value: 'down' },
                         { text: 'Izquierda', value: 'left' },
                         { text: 'Derecha', value: 'right' }
+                    ]
+                },
+                oledAddress: {
+                    acceptReporters: false,
+                    items: [
+                        { text: '0x3C (default)', value: '0x3C' },
+                        { text: '0x3D', value: '0x3D' }
+                    ]
+                },
+                emojiList: {
+                    acceptReporters: false,
+                    items: [
+                        { text: ':) Feliz', value: 'smile' },
+                        { text: ':( Triste', value: 'sad' },
+                        { text: '<3 Corazón', value: 'heart' },
+                        { text: '* Estrella', value: 'star' },
+                        { text: '! Alerta', value: 'alert' },
+                        { text: '? Pregunta', value: 'question' },
+                        { text: '✓ Correcto', value: 'check' },
+                        { text: '✗ Error', value: 'cross' },
+                        { text: '^ Arriba', value: 'arrow_up' },
+                        { text: 'v Abajo', value: 'arrow_down' },
+                        { text: '> Derecha', value: 'arrow_right' },
+                        { text: '< Izquierda', value: 'arrow_left' },
+                        { text: '~ Música', value: 'music' },
+                        { text: 'T Temperatura', value: 'thermometer' },
+                        { text: 'W WiFi', value: 'wifi' }
                     ]
                 }
             }
@@ -1456,6 +1642,202 @@ class PlayIoTBlocks {
             console.log(`OLED línea ${args.LINE} -> ${args.TEXT}`);
         } catch (e) {
             console.error('Error en oledLine:', e);
+        }
+    }
+
+    async motorDCPins(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'motorDC',
+                    pinA: parseInt(args.PIN_A),
+                    pinB: parseInt(args.PIN_B),
+                    speed: Math.max(-255, Math.min(255, parseInt(args.SPEED)))
+                }]
+            });
+            await this.peripheral._serial.write(json);
+        } catch (e) {
+            console.error('Error en motorDCPins:', e);
+        }
+    }
+
+    async motorStopPins(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'motorDC',
+                    pinA: parseInt(args.PIN_A),
+                    pinB: parseInt(args.PIN_B),
+                    speed: 0
+                }]
+            });
+            await this.peripheral._serial.write(json);
+        } catch (e) {
+            console.error('Error en motorStopPins:', e);
+        }
+    }
+
+    async setOledAddress(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'oledSetAddress',
+                    address: args.ADDRESS
+                }]
+            });
+            await this.peripheral._serial.write(json);
+        } catch (e) {
+            console.error('Error en setOledAddress:', e);
+        }
+    }
+
+    async oledTextXY(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'oledTextXY',
+                    text: args.TEXT,
+                    x: parseInt(args.X),
+                    y: parseInt(args.Y),
+                    size: parseInt(args.SIZE)
+                }]
+            });
+            await this.peripheral._serial.write(json);
+        } catch (e) {
+            console.error('Error en oledTextXY:', e);
+        }
+    }
+
+    async oledEmoji(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'oledEmoji',
+                    emoji: args.EMOJI,
+                    x: parseInt(args.X),
+                    y: parseInt(args.Y)
+                }]
+            });
+            await this.peripheral._serial.write(json);
+        } catch (e) {
+            console.error('Error en oledEmoji:', e);
+        }
+    }
+
+    async oledDrawLine(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'oledDrawLine',
+                    x0: parseInt(args.X0),
+                    y0: parseInt(args.Y0),
+                    x1: parseInt(args.X1),
+                    y1: parseInt(args.Y1)
+                }]
+            });
+            await this.peripheral._serial.write(json);
+        } catch (e) {
+            console.error('Error en oledDrawLine:', e);
+        }
+    }
+
+    async oledDrawRect(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'oledDrawRect',
+                    x: parseInt(args.X),
+                    y: parseInt(args.Y),
+                    w: parseInt(args.W),
+                    h: parseInt(args.H)
+                }]
+            });
+            await this.peripheral._serial.write(json);
+        } catch (e) {
+            console.error('Error en oledDrawRect:', e);
+        }
+    }
+
+    async oledFillRect(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'oledFillRect',
+                    x: parseInt(args.X),
+                    y: parseInt(args.Y),
+                    w: parseInt(args.W),
+                    h: parseInt(args.H)
+                }]
+            });
+            await this.peripheral._serial.write(json);
+        } catch (e) {
+            console.error('Error en oledFillRect:', e);
+        }
+    }
+
+    async oledDrawCircle(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'oledDrawCircle',
+                    x: parseInt(args.X),
+                    y: parseInt(args.Y),
+                    r: parseInt(args.R)
+                }]
+            });
+            await this.peripheral._serial.write(json);
+        } catch (e) {
+            console.error('Error en oledDrawCircle:', e);
+        }
+    }
+
+    async oledDrawPixel(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'oledDrawPixel',
+                    x: parseInt(args.X),
+                    y: parseInt(args.Y)
+                }]
+            });
+            await this.peripheral._serial.write(json);
+        } catch (e) {
+            console.error('Error en oledDrawPixel:', e);
+        }
+    }
+
+    async oledDisplay() {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'oledDisplay'
+                }]
+            });
+            await this.peripheral._serial.write(json);
+        } catch (e) {
+            console.error('Error en oledDisplay:', e);
         }
     }
 
