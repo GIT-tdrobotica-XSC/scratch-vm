@@ -21,26 +21,21 @@ class PlayMeSerial {
         this.port = port;
 
         try {
-            if (this.port.readable === null || this.port.writable === null) {
-                await this.port.open({ baudRate: 115200 });
-            }
+            // Siempre cerrar antes de abrir: evita el caso donde el puerto
+            // quedó abierto pero con streams bloqueados (ej: post-esptool-js)
+            try {
+                await this.port.close();
+            } catch (e) { /* ignorar: ya estaba cerrado */ }
+
+            await this.port.open({ baudRate: 115200 });
 
             this.keepReading = true;
             this.connected = true;
             this.buffer = '';
 
-            // 🔌 Hardware Reset: Deshabilitado temporalmente para PlayMe
-            // El chip USB-Serial de PlayMe no es compatible con este reset
-            // try {
-            //     await this.port.setSignals({ dataTerminalReady: false, requestToSend: true });
-            //     await new Promise(resolve => setTimeout(resolve, 100));
-            //     await this.port.setSignals({ dataTerminalReady: true, requestToSend: false });
-            //     await new Promise(resolve => setTimeout(resolve, 200));
-            // } catch (e) {
-            //     console.warn('⚠️ Error enviando señales de reset:', e.message);
-            // }
-
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // PlayMe: chip USB-Serial no soporta DTR/RTS reset manual.
+            // Se da más tiempo para que el firmware arranque limpiamente.
+            await new Promise(resolve => setTimeout(resolve, 1500));
             console.log('Conectado al PlayMe');
 
             const textDecoder = new TextDecoderStream();
