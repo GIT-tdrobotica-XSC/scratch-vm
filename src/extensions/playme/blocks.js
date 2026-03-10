@@ -55,11 +55,14 @@ class PlayMePeripheral {
         console.log('Solicitando nuevo puerto...');
 
         try {
-            await navigator.serial.requestPort();
+            const newPort = await navigator.serial.requestPort();
 
-            // Usar getPorts() post-requestPort como única fuente de verdad:
-            // evita duplicados que ocurren al hacer push sin verificar el estado actual.
-            this.devices = await navigator.serial.getPorts();
+            // Agregar solo el puerto seleccionado si no está ya en la lista.
+            // getPorts() devuelve TODOS los puertos recordados por el browser
+            // (de sesiones anteriores), lo que causa duplicados.
+            if (!this.devices.includes(newPort)) {
+                this.devices.push(newPort);
+            }
 
             console.log('Total dispositivos:', this.devices.length);
 
