@@ -55,15 +55,11 @@ class PlayMePeripheral {
         console.log('Solicitando nuevo puerto...');
 
         try {
-            const existingPorts = await navigator.serial.getPorts();
-            const newPort = await navigator.serial.requestPort();
+            await navigator.serial.requestPort();
 
-            const portExists = existingPorts.some(p => p === newPort);
-            if (!portExists) {
-                this.devices.push(newPort);
-            } else {
-                this.devices = existingPorts;
-            }
+            // Usar getPorts() post-requestPort como única fuente de verdad:
+            // evita duplicados que ocurren al hacer push sin verificar el estado actual.
+            this.devices = await navigator.serial.getPorts();
 
             console.log('Total dispositivos:', this.devices.length);
 

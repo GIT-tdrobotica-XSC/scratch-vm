@@ -27,15 +27,34 @@ class PlayMeSerial {
                 await this.port.close();
             } catch (e) { /* ignorar: ya estaba cerrado */ }
 
+            // Espera extra: dar tiempo al OS para liberar el puerto
+            // después de que esptool-js lo cerró
+            await new Promise(r => setTimeout(r, 500));
+
             await this.port.open({ baudRate: 115200 });
+
+            // CRÍTICO: Forzar DTR/RTS a un estado conocido.
+            // Después del flasheo, esptool puede dejar estas señales en un estado
+            // que mantiene al ESP32 en reset (DTR→EN) o en modo boot (RTS→GPIO0).
+            // Liberamos ambas señales primero.
+            await this.port.setSignals({
+                dataTerminalReady: false,
+                requestToSend: false
+            });
+            await new Promise(r => setTimeout(r, 100));
+
+            // Pulso de reset limpio: DTR controla EN en el circuito de auto-reset
+            await this.port.setSignals({ dataTerminalReady: true });
+            await new Promise(r => setTimeout(r, 50));
+            await this.port.setSignals({ dataTerminalReady: false });
+
+            // Esperar que el firmware arranque limpiamente después del reset
+            await new Promise(resolve => setTimeout(resolve, 2000));
 
             this.keepReading = true;
             this.connected = true;
             this.buffer = '';
 
-            // PlayMe: chip USB-Serial no soporta DTR/RTS reset manual.
-            // Se da más tiempo para que el firmware arranque limpiamente.
-            await new Promise(resolve => setTimeout(resolve, 1500));
             console.log('Conectado al PlayMe');
 
             const textDecoder = new TextDecoderStream();
@@ -89,7 +108,7 @@ class PlayMeSerial {
     }
 
     /**
-     * 🔓 Libera los streams (reader/writer) pero mantiene el objeto port abierto.
+     * Libera los streams (reader/writer) y cierra el puerto.
      */
     async releasePort() {
         console.log('🔓 Liberando puerto para actualización de firmware...');
@@ -119,7 +138,7 @@ class PlayMeSerial {
     }
 
     /**
-     * 🔐 Retoma un puerto que ya está abierto y re-inicializa los streams.
+     * Retoma un puerto post-flasheo y re-inicializa los streams.
      */
     async claimPort(port) {
         if (!port) return;
