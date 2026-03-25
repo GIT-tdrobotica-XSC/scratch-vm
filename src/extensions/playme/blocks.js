@@ -27,18 +27,16 @@ class PlayMePeripheral {
     }
 
     async _autoScan() {
+        // No pre-poblar con puertos históricos del browser para evitar acumulación
+        // entre sesiones. El usuario selecciona el puerto manualmente con scan().
         try {
             if ('serial' in navigator) {
                 const ports = await navigator.serial.getPorts();
-                this.devices = ports;
-                console.log('Auto-scan: encontrados', ports.length, 'puertos autorizados');
-
-                if (ports.length > 0) {
-                    this._runtime.emit(
-                        this._runtime.constructor.PERIPHERAL_LIST_UPDATE,
-                        this.getPeripheralDeviceList()
-                    );
+                // Olvidar todos los puertos acumulados de sesiones anteriores
+                for (const port of ports) {
+                    try { await port.forget(); } catch (e) { /* ignorar */ }
                 }
+                console.log('Auto-scan: limpiados', ports.length, 'puertos históricos');
             }
         } catch (e) {
             console.warn('Error en auto-scan:', e);
