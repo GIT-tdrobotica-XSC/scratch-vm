@@ -187,36 +187,50 @@ class PlayIoTPeripheral {
     async disconnect() {
         console.log('Desconectando dispositivo...');
 
+        // Capturar puerto activo antes de desconectar
+        const connectedIndex = this._connectedDeviceId
+            ? parseInt(this._connectedDeviceId.split('_')[1])
+            : -1;
+        const portToForget = connectedIndex >= 0 ? this.devices[connectedIndex] : null;
+
         try {
-            // Limpiar buffer de datos
             this.buffer = '';
 
-            // Resetear datos de sensores
             Object.keys(this.sensorData).forEach(key => {
                 this.sensorData[key] = 0;
             });
 
-            // Desconectar el serial
             if (this._serial) {
                 await this._serial.disconnect();
             }
 
-            // Limpiar ID de dispositivo conectado
             this._connectedDeviceId = null;
+
+            // Remover puerto de la lista y olvidarlo del browser para evitar acumulación
+            if (portToForget) {
+                this.devices = this.devices.filter(d => d !== portToForget);
+                try { await portToForget.forget(); } catch (e) { /* ignorar si no soportado */ }
+            }
 
             console.log('Desconexión completada');
 
-            // Notificar a Scratch
+            this._runtime.emit(
+                this._runtime.constructor.PERIPHERAL_LIST_UPDATE,
+                this.getPeripheralDeviceList()
+            );
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
 
         } catch (error) {
             console.error('Error durante desconexión:', error);
 
-            // Forzar limpieza incluso si hay error
             this.buffer = '';
             this._connectedDeviceId = null;
 
-            // Notificar desconexión de todos modos
+            if (portToForget) {
+                this.devices = this.devices.filter(d => d !== portToForget);
+                try { await portToForget.forget(); } catch (e) { /* ignorar */ }
+            }
+
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
         }
     }

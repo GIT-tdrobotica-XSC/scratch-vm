@@ -147,6 +147,12 @@ class PlayMePeripheral {
     async disconnect() {
         console.log('Desconectando dispositivo...');
 
+        // Capturar puerto activo antes de desconectar
+        const connectedIndex = this._connectedDeviceId
+            ? parseInt(this._connectedDeviceId.split('_')[1])
+            : -1;
+        const portToForget = connectedIndex >= 0 ? this.devices[connectedIndex] : null;
+
         try {
             this.buffer = '';
 
@@ -160,8 +166,18 @@ class PlayMePeripheral {
 
             this._connectedDeviceId = null;
 
+            // Remover puerto de la lista y olvidarlo del browser para evitar acumulación
+            if (portToForget) {
+                this.devices = this.devices.filter(d => d !== portToForget);
+                try { await portToForget.forget(); } catch (e) { /* ignorar si no soportado */ }
+            }
+
             console.log('Desconexión completada');
 
+            this._runtime.emit(
+                this._runtime.constructor.PERIPHERAL_LIST_UPDATE,
+                this.getPeripheralDeviceList()
+            );
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
 
         } catch (error) {
@@ -169,6 +185,11 @@ class PlayMePeripheral {
 
             this.buffer = '';
             this._connectedDeviceId = null;
+
+            if (portToForget) {
+                this.devices = this.devices.filter(d => d !== portToForget);
+                try { await portToForget.forget(); } catch (e) { /* ignorar */ }
+            }
 
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
         }
