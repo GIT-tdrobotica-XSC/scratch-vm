@@ -55,14 +55,11 @@ class PlayMePeripheral {
         try {
             const newPort = await navigator.serial.requestPort();
 
-            // Agregar solo el puerto seleccionado si no está ya en la lista.
-            // getPorts() devuelve TODOS los puertos recordados por el browser
-            // (de sesiones anteriores), lo que causa duplicados.
-            if (!this.devices.includes(newPort)) {
-                this.devices.push(newPort);
-            }
-
-            console.log('Total dispositivos:', this.devices.length);
+            // Siempre reemplazar la lista con el puerto recién seleccionado.
+            // Usar push+includes causaba race conditions: forget() en disconnect()
+            // hacía que requestPort() retornara un objeto nuevo en el siguiente scan,
+            // que no coincidía por referencia con el anterior → duplicado.
+            this.devices = [newPort];
 
             this._runtime.emit(
                 this._runtime.constructor.PERIPHERAL_LIST_UPDATE,
@@ -145,12 +142,6 @@ class PlayMePeripheral {
     async disconnect() {
         console.log('Desconectando dispositivo...');
 
-        // Capturar puerto activo antes de desconectar
-        const connectedIndex = this._connectedDeviceId
-            ? parseInt(this._connectedDeviceId.split('_')[1])
-            : -1;
-        const portToForget = connectedIndex >= 0 ? this.devices[connectedIndex] : null;
-
         try {
             this.buffer = '';
 
@@ -164,13 +155,11 @@ class PlayMePeripheral {
 
             this._connectedDeviceId = null;
 
-            // Remover puerto de la lista y olvidarlo del browser para evitar acumulación
-            if (portToForget) {
-                this.devices = this.devices.filter(d => d !== portToForget);
-                try { await portToForget.forget(); } catch (e) { /* ignorar si no soportado */ }
-            }
-
-            console.log('Desconexión completada');
+            // Limpiar la lista. No llamar port.forget() aquí: causaba race condition
+            // donde el siguiente scan obtenía un objeto nuevo del mismo puerto
+            // (porque fue olvidado) y el dedup por referencia fallaba → duplicados.
+            // _autoScan() limpia puertos históricos al arrancar la app.
+            this.devices = [];
 
             this._runtime.emit(
                 this._runtime.constructor.PERIPHERAL_LIST_UPDATE,
@@ -183,11 +172,7 @@ class PlayMePeripheral {
 
             this.buffer = '';
             this._connectedDeviceId = null;
-
-            if (portToForget) {
-                this.devices = this.devices.filter(d => d !== portToForget);
-                try { await portToForget.forget(); } catch (e) { /* ignorar */ }
-            }
+            this.devices = [];
 
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
         }
