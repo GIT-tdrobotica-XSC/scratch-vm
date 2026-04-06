@@ -216,6 +216,10 @@ class PlayIoTPeripheral {
             this._connectedDeviceId = null;
             this.devices = [];
 
+            this._runtime.emit(
+                this._runtime.constructor.PERIPHERAL_LIST_UPDATE,
+                this.getPeripheralDeviceList()
+            );
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
         }
     }
