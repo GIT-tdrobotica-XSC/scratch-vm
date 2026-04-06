@@ -271,9 +271,9 @@ class PlayIoTBlocks {
         return {
             id: 'playiot',
             name: 'PlayIoT',
-            color1: '#808080',
-            color2: '#666666',
-            color3: '#4d4d4d',
+            color1: '#3D5A80',
+            color2: '#2C4A6E',
+            color3: '#1E3A5F',
             showStatusButton: true,
             blocks: [
                 // ========== SALIDAS DIGITALES ==========
