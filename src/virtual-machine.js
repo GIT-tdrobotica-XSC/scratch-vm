@@ -1601,9 +1601,8 @@ class VirtualMachine extends EventEmitter {
         target.isDeviceTarget = true;
         target.deviceExtensionId = extensionId;
 
-        // Keep off-stage and invisible so it never appears on the canvas
-        target.setXY(99999, 99999);
-        target.setVisible(false);
+        // Invisible — no need to position it, renderer may not be ready yet
+        target.visible = false;
 
         this.runtime.addTarget(target);
         target.goBehindOther(target); // push to back
