@@ -1581,6 +1581,53 @@ class VirtualMachine extends EventEmitter {
     configureScratchLinkSocketFactory (factory) {
         this.runtime.configureScratchLinkSocketFactory(factory);
     }
+
+    /**
+     * Create an invisible "device target" sprite to hold blocks for a device extension.
+     * The target is marked with isDeviceTarget=true so the GUI can filter it from the sprite list.
+     * @param {string} extensionId - e.g. 'playiot' or 'playme'
+     * @param {string} deviceName - human-readable name shown in the workspace
+     * @returns {string} The new target's id
+     */
+    createDeviceTarget (extensionId, deviceName) {
+        const Blocks = require('./engine/blocks');
+        const Sprite = require('./sprites/sprite');
+
+        const blocks = new Blocks(this.runtime);
+        const sprite = new Sprite(blocks, this.runtime);
+        sprite.name = deviceName || extensionId;
+
+        const target = sprite.createClone();
+        target.isDeviceTarget = true;
+        target.deviceExtensionId = extensionId;
+
+        // Keep off-stage and invisible so it never appears on the canvas
+        target.setXY(99999, 99999);
+        target.setVisible(false);
+
+        this.runtime.addTarget(target);
+        target.goBehindOther(target); // push to back
+
+        this.emitTargetsUpdate(false);
+        return target.id;
+    }
+
+    /**
+     * Delete a device target created with createDeviceTarget.
+     * @param {string} targetId
+     */
+    deleteDeviceTarget (targetId) {
+        const target = this.runtime.getTargetById(targetId);
+        if (!target) return;
+        this.runtime.stopForTarget(target);
+        this.runtime.disposeTarget(target);
+        // If it was the editing target, switch to stage
+        if (this.editingTarget === target) {
+            const stage = this.runtime.getTargetForStage();
+            if (stage) this.setEditingTarget(stage.id);
+        }
+        this.emitTargetsUpdate(false);
+    }
 }
 
 module.exports = VirtualMachine;
