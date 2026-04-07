@@ -1614,6 +1614,7 @@ class VirtualMachine extends EventEmitter {
     /**
      * Delete a device target created with createDeviceTarget.
      * @param {string} targetId
+     * @returns {void}
      */
     deleteDeviceTarget (targetId) {
         const target = this.runtime.getTargetById(targetId);
