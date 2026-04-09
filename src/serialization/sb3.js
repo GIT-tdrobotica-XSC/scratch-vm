@@ -475,7 +475,21 @@ const serializeTarget = function (target, extensions) {
     obj.costumes = target.costumes.map(serializeCostume);
     obj.sounds = target.sounds.map(serializeSound);
     // Preserve device target metadata
-    if (target.isDeviceTarget) obj.isDeviceTarget = true;
+    if (target.isDeviceTarget) {
+        obj.isDeviceTarget = true;
+        // SB3 schema requires at least 1 costume — add a placeholder for device targets with none
+        if (obj.costumes.length === 0) {
+            obj.costumes = [{
+                name: 'device',
+                bitmapResolution: 1,
+                dataFormat: 'svg',
+                assetId: 'cd21514d0531fdffb22204e0ec5ed84a',
+                md5ext: 'cd21514d0531fdffb22204e0ec5ed84a.svg',
+                rotationCenterX: 0,
+                rotationCenterY: 0
+            }];
+        }
+    }
     if (target.deviceExtensionId) obj.deviceExtensionId = target.deviceExtensionId;
     if (Object.prototype.hasOwnProperty.call(target, 'volume')) obj.volume = target.volume;
     if (Object.prototype.hasOwnProperty.call(target, 'layerOrder')) obj.layerOrder = target.layerOrder;
@@ -875,6 +889,13 @@ const parseScratchAssets = function (object, runtime, zip) {
         soundPromises: null,
         soundBank: runtime.audioEngine && runtime.audioEngine.createBank()
     };
+
+    // Device targets have a placeholder costume — skip loading it
+    if (object.isDeviceTarget) {
+        assets.costumePromises = [];
+        assets.soundPromises = [];
+        return Promise.resolve(assets);
+    }
 
     // Costumes from JSON.
     assets.costumePromises = (object.costumes || []).map(costumeSource => {
