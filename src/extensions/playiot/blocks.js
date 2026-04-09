@@ -909,18 +909,18 @@ class PlayIoTBlocks {
                 digitalPins: {
                     acceptReporters: true,
                     items: [
-                        { text: 'Pin 2', value: '2' },
-                        { text: 'Pin 5', value: '5' },
-                        { text: 'Pin 23', value: '23' }
+                        { text: 'OUT1 · DIO2', value: '2' },
+                        { text: 'OUT2 · DIO5', value: '5' },
+                        { text: 'OUT3 · DIO23', value: '23' }
                     ]
                 },
                 pwmPins: {
                     acceptReporters: true,
                     items: [
-                        { text: 'Pin 12 (M1A)', value: '12' },
-                        { text: 'Pin 13 (M1B)', value: '13' },
-                        { text: 'Pin 18 (M2A)', value: '18' },
-                        { text: 'Pin 19 (M2B)', value: '19' }
+                        { text: 'OUT4 · MOT1A', value: '12' },
+                        { text: 'OUT5 · MOT1B', value: '13' },
+                        { text: 'OUT6 · MOT2A', value: '18' },
+                        { text: 'OUT7 · MOT2B', value: '19' }
                     ]
                 },
                 digitalState: {
@@ -940,17 +940,17 @@ class PlayIoTBlocks {
                 leds: {
                     acceptReporters: true,
                     items: [
-                        { text: 'LED 0', value: '0' },
-                        { text: 'LED 1', value: '1' },
-                        { text: 'LED 2', value: '2' }
+                        { text: 'OUT11 · LED 0', value: '0' },
+                        { text: 'OUT11 · LED 1', value: '1' },
+                        { text: 'OUT11 · LED 2', value: '2' }
                     ]
                 },
                 rgbLeds: {
                     acceptReporters: true,
                     items: [
-                        { text: 'LED 0', value: '0' },
-                        { text: 'LED 1', value: '1' },
-                        { text: 'LED 2', value: '2' }
+                        { text: 'OUT11 · LED 0', value: '0' },
+                        { text: 'OUT11 · LED 1', value: '1' },
+                        { text: 'OUT11 · LED 2', value: '2' }
                     ]
                 },
                 rgbPresets: {
@@ -969,16 +969,16 @@ class PlayIoTBlocks {
                 motors: {
                     acceptReporters: true,
                     items: [
-                        { text: 'Motor 1', value: '1' },
-                        { text: 'Motor 2', value: '2' }
+                        { text: 'Motor 1 (OUT4·OUT5)', value: '1' },
+                        { text: 'Motor 2 (OUT6·OUT7)', value: '2' }
                     ]
                 },
                 servos: {
                     acceptReporters: true,
                     items: [
-                        { text: 'Servo 0 (Pin 25)', value: '0' },
-                        { text: 'Servo 1 (Pin 26)', value: '1' },
-                        { text: 'Servo 2 (Pin 27)', value: '2' }
+                        { text: 'OUT8 · SRV25', value: '0' },
+                        { text: 'OUT9 · SRV26', value: '1' },
+                        { text: 'OUT10 · SRV27', value: '2' }
                     ]
                 },
                 textSize: {
@@ -1001,8 +1001,8 @@ class PlayIoTBlocks {
                 buttons: {
                     acceptReporters: false,
                     items: [
-                        { text: 'A', value: 'A' },
-                        { text: 'B', value: 'B' }
+                        { text: 'IN5 · Botón A', value: 'A' },
+                        { text: 'IN6 · Botón B', value: 'B' }
                     ]
                 },
                 buttonCondition: {
@@ -1015,17 +1015,17 @@ class PlayIoTBlocks {
                 analogInputs: {
                     acceptReporters: false,
                     items: [
-                        { text: 'Potenciómetro', value: 'POT' },
-                        { text: 'ADC 33', value: 'ADC33' },
-                        { text: 'ADC 34', value: 'ADC34' },
-                        { text: 'ADC 35', value: 'ADC35' }
+                        { text: 'IN4 · POT', value: 'POT' },
+                        { text: 'IN1 · ADC33', value: 'ADC33' },
+                        { text: 'IN2 · ADC34', value: 'ADC34' },
+                        { text: 'IN3 · ADC35', value: 'ADC35' }
                     ]
                 },
                 joystickAxis: {
                     acceptReporters: false,
                     items: [
-                        { text: 'X', value: 'X' },
-                        { text: 'Y', value: 'Y' }
+                        { text: 'IN8 · Eje X', value: 'X' },
+                        { text: 'IN7 · Eje Y', value: 'Y' }
                     ]
                 },
                 joystickDirections: {

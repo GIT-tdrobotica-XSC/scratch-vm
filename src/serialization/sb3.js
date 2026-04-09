@@ -465,14 +465,18 @@ const serializeTarget = function (target, extensions) {
     obj.comments = serializeComments(target.comments);
 
     // TODO remove this check/patch when (#1901) is fixed
-    if (target.currentCostume < 0 || target.currentCostume >= target.costumes.length) {
+    if (target.costumes.length > 0 &&
+        (target.currentCostume < 0 || target.currentCostume >= target.costumes.length)) {
         log.warn(`currentCostume property for target ${target.name} is out of range`);
         target.currentCostume = MathUtil.clamp(target.currentCostume, 0, target.costumes.length - 1);
     }
 
-    obj.currentCostume = target.currentCostume;
+    obj.currentCostume = target.costumes.length > 0 ? target.currentCostume : 0;
     obj.costumes = target.costumes.map(serializeCostume);
     obj.sounds = target.sounds.map(serializeSound);
+    // Preserve device target metadata
+    if (target.isDeviceTarget) obj.isDeviceTarget = true;
+    if (target.deviceExtensionId) obj.deviceExtensionId = target.deviceExtensionId;
     if (Object.prototype.hasOwnProperty.call(target, 'volume')) obj.volume = target.volume;
     if (Object.prototype.hasOwnProperty.call(target, 'layerOrder')) obj.layerOrder = target.layerOrder;
     if (obj.isStage) { // Only the stage should have these properties
@@ -1078,7 +1082,7 @@ const parseScratchObject = function (object, runtime, extensions, zip, assets) {
     if (Object.prototype.hasOwnProperty.call(object, 'visible')) {
         target.visible = object.visible;
     }
-    if (Object.prototype.hasOwnProperty.call(object, 'currentCostume')) {
+    if (Object.prototype.hasOwnProperty.call(object, 'currentCostume') && object.costumes && object.costumes.length > 0) {
         target.currentCostume = MathUtil.clamp(object.currentCostume, 0, object.costumes.length - 1);
     }
     if (Object.prototype.hasOwnProperty.call(object, 'rotationStyle')) {
@@ -1095,6 +1099,12 @@ const parseScratchObject = function (object, runtime, extensions, zip, assets) {
     }
     if (Object.prototype.hasOwnProperty.call(object, 'draggable')) {
         target.draggable = object.draggable;
+    }
+    if (object.isDeviceTarget) {
+        target.isDeviceTarget = true;
+    }
+    if (object.deviceExtensionId) {
+        target.deviceExtensionId = object.deviceExtensionId;
     }
     Promise.all(costumePromises).then(costumes => {
         sprite.costumes = costumes;
