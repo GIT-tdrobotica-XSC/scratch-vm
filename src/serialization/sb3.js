@@ -894,7 +894,7 @@ const parseScratchAssets = function (object, runtime, zip) {
     if (object.isDeviceTarget) {
         assets.costumePromises = [];
         assets.soundPromises = [];
-        return Promise.resolve(assets);
+        return assets;
     }
 
     // Costumes from JSON.
