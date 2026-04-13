@@ -443,7 +443,7 @@ class RenderedTarget extends Target {
         );
         if (this.renderer) {
             const costume = this.getCostumes()[this.currentCostume];
-            this.renderer.updateDrawableSkinId(this.drawableID, costume.skinId);
+            if (costume) this.renderer.updateDrawableSkinId(this.drawableID, costume.skinId);
 
             if (this.visible) {
                 this.emit(RenderedTarget.EVENT_TARGET_VISUAL_CHANGE, this);
@@ -682,7 +682,7 @@ class RenderedTarget extends Target {
             this.renderer.updateDrawableVisible(this.drawableID, this.visible);
 
             const costume = this.getCostumes()[this.currentCostume];
-            this.renderer.updateDrawableSkinId(this.drawableID, costume.skinId);
+            if (costume) this.renderer.updateDrawableSkinId(this.drawableID, costume.skinId);
 
             for (const effectName in this.effects) {
                 if (!Object.prototype.hasOwnProperty.call(this.effects, effectName)) continue;

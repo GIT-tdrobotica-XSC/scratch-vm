@@ -565,7 +565,10 @@ class VirtualMachine extends EventEmitter {
         return Promise.all(extensionPromises).then(() => {
             targets.forEach(target => {
                 this.runtime.addTarget(target);
-                (/** @type RenderedTarget */ target).updateAllDrawableProperties();
+                // Device targets have no costumes — skip drawable update to avoid crash
+                if (!target.isDeviceTarget) {
+                    (/** @type RenderedTarget */ target).updateAllDrawableProperties();
+                }
                 // Ensure unique sprite name
                 if (target.isSprite()) this.renameSprite(target.id, target.getName());
             });
