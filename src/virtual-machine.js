@@ -316,6 +316,32 @@ class VirtualMachine extends EventEmitter {
             input = JSON.stringify(input);
         }
 
+        // Pre-process: device targets with 0 costumes fail schema validation.
+        // Inject a placeholder costume so the validator accepts them.
+        if (typeof input === 'string') {
+            try {
+                const projectData = JSON.parse(input);
+                if (projectData && Array.isArray(projectData.targets)) {
+                    let patched = false;
+                    projectData.targets.forEach(target => {
+                        if (target.isDeviceTarget && (!target.costumes || target.costumes.length === 0)) {
+                            target.costumes = [{
+                                name: 'device',
+                                bitmapResolution: 1,
+                                dataFormat: 'svg',
+                                assetId: 'cd21514d0531fdffb22204e0ec5ed84a',
+                                md5ext: 'cd21514d0531fdffb22204e0ec5ed84a.svg',
+                                rotationCenterX: 0,
+                                rotationCenterY: 0
+                            }];
+                            patched = true;
+                        }
+                    });
+                    if (patched) input = JSON.stringify(projectData);
+                }
+            } catch (e) { /* not JSON, leave as-is */ }
+        }
+
         const validationPromise = new Promise((resolve, reject) => {
             const validate = require('scratch-parser');
             // The second argument of false below indicates to the validator that the
