@@ -295,24 +295,6 @@ class PlayIoTBlocks {
                     },
                     category: 'Salidas Digitales'
                 },
-                {
-                    opcode: 'digitalWriteQuick',
-                    blockType: BlockType.COMMAND,
-                    text: 'Pin [PIN] [STATE_QUICK]',
-                    arguments: {
-                        PIN: {
-                            type: ArgumentType.NUMBER,
-                            menu: 'digitalPins',
-                            defaultValue: '2'
-                        },
-                        STATE_QUICK: {
-                            type: ArgumentType.STRING,
-                            menu: 'onOff',
-                            defaultValue: 'on'
-                        }
-                    },
-                    category: 'Salidas Digitales'
-                },
 
                 // ========== PWM Y VELOCIDAD ==========
                 {
@@ -333,14 +315,19 @@ class PlayIoTBlocks {
                     category: 'Motores y PWM'
                 },
                 {
-                    opcode: 'motorSpeed',
+                    opcode: 'motorRun',
                     blockType: BlockType.COMMAND,
-                    text: 'Motor [MOTOR] velocidad [SPEED] %',
+                    text: 'Motor [MOTOR] [DIRECTION] [SPEED] %',
                     arguments: {
                         MOTOR: {
                             type: ArgumentType.NUMBER,
                             menu: 'motors',
                             defaultValue: '1'
+                        },
+                        DIRECTION: {
+                            type: ArgumentType.STRING,
+                            menu: 'motorDirection',
+                            defaultValue: 'forward'
                         },
                         SPEED: {
                             type: ArgumentType.NUMBER,
@@ -368,86 +355,24 @@ class PlayIoTBlocks {
                     text: 'Parar todos los motores',
                     category: 'Motores y PWM'
                 },
-                {
-                    opcode: 'motorDCPins',
-                    blockType: BlockType.COMMAND,
-                    text: 'Motor pin A:[PIN_A] pin B:[PIN_B] velocidad [SPEED]',
-                    arguments: {
-                        PIN_A: {
-                            type: ArgumentType.NUMBER,
-                            defaultValue: 32
-                        },
-                        PIN_B: {
-                            type: ArgumentType.NUMBER,
-                            defaultValue: 33
-                        },
-                        SPEED: {
-                            type: ArgumentType.NUMBER,
-                            defaultValue: 200
-                        }
-                    },
-                    category: 'Motores y PWM'
-                },
-                {
-                    opcode: 'motorStopPins',
-                    blockType: BlockType.COMMAND,
-                    text: 'Detener motor pin A:[PIN_A] pin B:[PIN_B]',
-                    arguments: {
-                        PIN_A: {
-                            type: ArgumentType.NUMBER,
-                            defaultValue: 32
-                        },
-                        PIN_B: {
-                            type: ArgumentType.NUMBER,
-                            defaultValue: 33
-                        }
-                    },
-                    category: 'Motores y PWM'
-                },
 
-                // ========== LEDS INDIVIDUALES ==========
-                {
-                    opcode: 'ledOn',
-                    blockType: BlockType.COMMAND,
-                    text: 'Encender LED [LED]',
-                    arguments: {
-                        LED: {
-                            type: ArgumentType.NUMBER,
-                            menu: 'leds',
-                            defaultValue: '0'
-                        }
-                    },
-                    category: 'LEDs'
-                },
-                {
-                    opcode: 'ledOff',
-                    blockType: BlockType.COMMAND,
-                    text: 'Apagar LED [LED]',
-                    arguments: {
-                        LED: {
-                            type: ArgumentType.NUMBER,
-                            menu: 'leds',
-                            defaultValue: '0'
-                        }
-                    },
-                    category: 'LEDs'
-                },
+                // ========== PARPADEO LED ==========
                 {
                     opcode: 'ledBlink',
                     blockType: BlockType.COMMAND,
-                    text: 'Parpadear LED [LED] [TIMES] veces',
+                    text: 'Parpadear [LED] [TIMES] veces',
                     arguments: {
                         LED: {
                             type: ArgumentType.NUMBER,
-                            menu: 'leds',
-                            defaultValue: '0'
+                            menu: 'digitalPins',
+                            defaultValue: '2'
                         },
                         TIMES: {
                             type: ArgumentType.NUMBER,
                             defaultValue: 3
                         }
                     },
-                    category: 'LEDs'
+                    category: 'Salidas Digitales'
                 },
 
                 // ========== LEDS RGB ==========
@@ -489,24 +414,6 @@ class PlayIoTBlocks {
                         COLOR: {
                             type: ArgumentType.COLOR,
                             defaultValue: '#ff0000'
-                        }
-                    },
-                    category: 'RGB'
-                },
-                {
-                    opcode: 'setRGBPreset',
-                    blockType: BlockType.COMMAND,
-                    text: 'LED RGB [LED] [PRESET]',
-                    arguments: {
-                        LED: {
-                            type: ArgumentType.NUMBER,
-                            menu: 'rgbLeds',
-                            defaultValue: '0'
-                        },
-                        PRESET: {
-                            type: ArgumentType.STRING,
-                            menu: 'rgbPresets',
-                            defaultValue: 'red'
                         }
                     },
                     category: 'RGB'
@@ -598,23 +505,6 @@ class PlayIoTBlocks {
 
                 // ========== PANTALLA OLED ==========
                 {
-                    opcode: 'oledText',
-                    blockType: BlockType.COMMAND,
-                    text: 'OLED mostrar texto [TEXT] tamaño [SIZE]',
-                    arguments: {
-                        TEXT: {
-                            type: ArgumentType.STRING,
-                            defaultValue: 'Hola'
-                        },
-                        SIZE: {
-                            type: ArgumentType.NUMBER,
-                            menu: 'textSize',
-                            defaultValue: '1'
-                        }
-                    },
-                    category: 'Pantalla OLED'
-                },
-                {
                     opcode: 'oledNumber',
                     blockType: BlockType.COMMAND,
                     text: 'OLED mostrar [LABEL] valor [VALUE]',
@@ -634,23 +524,6 @@ class PlayIoTBlocks {
                     opcode: 'oledClear',
                     blockType: BlockType.COMMAND,
                     text: 'OLED limpiar pantalla',
-                    category: 'Pantalla OLED'
-                },
-                {
-                    opcode: 'oledLine',
-                    blockType: BlockType.COMMAND,
-                    text: 'OLED línea [LINE] texto [TEXT]',
-                    arguments: {
-                        LINE: {
-                            type: ArgumentType.NUMBER,
-                            menu: 'oledLines',
-                            defaultValue: '0'
-                        },
-                        TEXT: {
-                            type: ArgumentType.STRING,
-                            defaultValue: 'Línea'
-                        }
-                    },
                     category: 'Pantalla OLED'
                 },
 
@@ -794,7 +667,7 @@ class PlayIoTBlocks {
                 {
                     opcode: 'buttonPressed',
                     blockType: BlockType.COMMAND,
-                    text: 'Si botón [BUTTON] presionado [CONDITION]',
+                    text: 'Botón [BUTTON] [CONDITION]',
                     arguments: {
                         BUTTON: {
                             type: ArgumentType.STRING,
@@ -909,25 +782,25 @@ class PlayIoTBlocks {
                 digitalPins: {
                     acceptReporters: true,
                     items: [
-                        { text: 'OUT1 · DIO2', value: '2' },
-                        { text: 'OUT2 · DIO5', value: '5' },
-                        { text: 'OUT3 · DIO23', value: '23' }
+                        { text: 'OUT · DIO2', value: '2' },
+                        { text: 'OUT · DIO5', value: '5' },
+                        { text: 'OUT · DIO23', value: '23' }
                     ]
                 },
                 pwmPins: {
                     acceptReporters: true,
                     items: [
-                        { text: 'OUT4 · MOT1A', value: '12' },
-                        { text: 'OUT5 · MOT1B', value: '13' },
-                        { text: 'OUT6 · MOT2A', value: '18' },
-                        { text: 'OUT7 · MOT2B', value: '19' }
+                        { text: 'OUT · MOT1A', value: '12' },
+                        { text: 'OUT · MOT1B', value: '13' },
+                        { text: 'OUT · MOT2A', value: '18' },
+                        { text: 'OUT · MOT2B', value: '19' }
                     ]
                 },
                 digitalState: {
                     acceptReporters: true,
                     items: [
-                        { text: 'ALTO (1)', value: '1' },
-                        { text: 'BAJO (0)', value: '0' }
+                        { text: 'ENCENDIDO', value: '1' },
+                        { text: 'APAGADO', value: '0' }
                     ]
                 },
                 onOff: {
@@ -940,17 +813,17 @@ class PlayIoTBlocks {
                 leds: {
                     acceptReporters: true,
                     items: [
-                        { text: 'OUT11 · LED 0', value: '0' },
-                        { text: 'OUT11 · LED 1', value: '1' },
-                        { text: 'OUT11 · LED 2', value: '2' }
+                        { text: 'OUT · DIO2', value: '2' },
+                        { text: 'OUT · DIO5', value: '5' },
+                        { text: 'OUT · DIO23', value: '23' }
                     ]
                 },
                 rgbLeds: {
                     acceptReporters: true,
                     items: [
-                        { text: 'OUT11 · LED 0', value: '0' },
-                        { text: 'OUT11 · LED 1', value: '1' },
-                        { text: 'OUT11 · LED 2', value: '2' }
+                        { text: 'OUT · LED 0', value: '0' },
+                        { text: 'OUT · LED 1', value: '1' },
+                        { text: 'OUT · LED 2', value: '2' }
                     ]
                 },
                 rgbPresets: {
@@ -969,16 +842,23 @@ class PlayIoTBlocks {
                 motors: {
                     acceptReporters: true,
                     items: [
-                        { text: 'Motor 1 (OUT4·OUT5)', value: '1' },
-                        { text: 'Motor 2 (OUT6·OUT7)', value: '2' }
+                        { text: 'Motor 1', value: '1' },
+                        { text: 'Motor 2', value: '2' }
+                    ]
+                },
+                motorDirection: {
+                    acceptReporters: false,
+                    items: [
+                        { text: 'horario', value: 'forward' },
+                        { text: 'antihorario', value: 'backward' }
                     ]
                 },
                 servos: {
                     acceptReporters: true,
                     items: [
-                        { text: 'OUT8 · SRV25', value: '0' },
-                        { text: 'OUT9 · SRV26', value: '1' },
-                        { text: 'OUT10 · SRV27', value: '2' }
+                        { text: 'OUT · SRV25', value: '0' },
+                        { text: 'OUT · SRV26', value: '1' },
+                        { text: 'OUT · SRV27', value: '2' }
                     ]
                 },
                 textSize: {
@@ -1001,8 +881,8 @@ class PlayIoTBlocks {
                 buttons: {
                     acceptReporters: false,
                     items: [
-                        { text: 'IN5 · Botón A', value: 'A' },
-                        { text: 'IN6 · Botón B', value: 'B' }
+                        { text: 'IN · Botón A', value: 'A' },
+                        { text: 'IN · Botón B', value: 'B' }
                     ]
                 },
                 buttonCondition: {
@@ -1015,17 +895,17 @@ class PlayIoTBlocks {
                 analogInputs: {
                     acceptReporters: false,
                     items: [
-                        { text: 'IN4 · POT', value: 'POT' },
-                        { text: 'IN1 · ADC33', value: 'ADC33' },
-                        { text: 'IN2 · ADC34', value: 'ADC34' },
-                        { text: 'IN3 · ADC35', value: 'ADC35' }
+                        { text: 'IN · POT', value: 'POT' },
+                        { text: 'IN · ADC33', value: 'ADC33' },
+                        { text: 'IN · ADC34', value: 'ADC34' },
+                        { text: 'IN · ADC35', value: 'ADC35' }
                     ]
                 },
                 joystickAxis: {
                     acceptReporters: false,
                     items: [
-                        { text: 'IN8 · Eje X', value: 'X' },
-                        { text: 'IN7 · Eje Y', value: 'Y' }
+                        { text: 'IN · Eje X', value: 'X' },
+                        { text: 'IN · Eje Y', value: 'Y' }
                     ]
                 },
                 joystickDirections: {
@@ -1094,30 +974,6 @@ class PlayIoTBlocks {
         }
     }
 
-    async digitalWriteQuick(args) {
-        if (!this.peripheral.isConnected()) {
-            console.warn('No conectado');
-            return;
-        }
-
-        try {
-            const state = args.STATE_QUICK === 'on' ? 1 : 0;
-            const json = JSON.stringify({
-                command: 'outputsQueue',
-                testValue: [{
-                    command: 'digitalWrite',
-                    pin: parseInt(args.PIN),
-                    value: state
-                }]
-            });
-
-            await this.peripheral._serial.write(json);
-            console.log(`Pin ${args.PIN} -> ${args.STATE_QUICK}`);
-        } catch (e) {
-            console.error('Error en digitalWriteQuick:', e);
-        }
-    }
-
     // PWM Y MOTORES
     async analogWrite(args) {
         if (!this.peripheral.isConnected()) {
@@ -1143,7 +999,7 @@ class PlayIoTBlocks {
         }
     }
 
-    async motorSpeed(args) {
+    async motorRun(args) {
         if (!this.peripheral.isConnected()) {
             console.warn('No conectado');
             return;
@@ -1153,21 +1009,25 @@ class PlayIoTBlocks {
             const motor = parseInt(args.MOTOR);
             const speed = Math.max(0, Math.min(100, parseInt(args.SPEED)));
             const pwmValue = Math.round(speed * 2.55); // 0-255
+            const forward = args.DIRECTION === 'forward';
+
+            // Motor 1: pinA=12, pinB=13 / Motor 2: pinA=18, pinB=19
+            const pins = motor === 1 ? { pinA: 12, pinB: 13 } : { pinA: 18, pinB: 19 };
 
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{
-                    command: 'motorSpeed',
-                    motor: motor,
-                    speed: speed,
-                    pwmValue: pwmValue
+                    command: 'motorDC',
+                    pinA: pins.pinA,
+                    pinB: pins.pinB,
+                    speed: forward ? pwmValue : -pwmValue
                 }]
             });
 
             await this.peripheral._serial.write(json);
-            console.log(`Motor ${motor} -> ${speed}%`);
+            console.log(`Motor ${motor} ${args.DIRECTION} -> ${speed}%`);
         } catch (e) {
-            console.error('Error en motorSpeed:', e);
+            console.error('Error en motorRun:', e);
         }
     }
 
@@ -1179,11 +1039,15 @@ class PlayIoTBlocks {
 
         try {
             const motor = parseInt(args.MOTOR);
+            const pins = motor === 1 ? { pinA: 12, pinB: 13 } : { pinA: 18, pinB: 19 };
+
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{
-                    command: 'motorStop',
-                    motor: motor
+                    command: 'motorDC',
+                    pinA: pins.pinA,
+                    pinB: pins.pinB,
+                    speed: 0
                 }]
             });
 
@@ -1212,55 +1076,6 @@ class PlayIoTBlocks {
             console.log('Todos los motores parados');
         } catch (e) {
             console.error('Error en allMotorsStop:', e);
-        }
-    }
-
-    // LEDS INDIVIDUALES
-    async ledOn(args) {
-        if (!this.peripheral.isConnected()) {
-            console.warn('No conectado');
-            return;
-        }
-
-        try {
-            const led = parseInt(args.LED);
-            const json = JSON.stringify({
-                command: 'outputsQueue',
-                testValue: [{
-                    command: 'digitalWrite',
-                    pin: led,
-                    value: 1
-                }]
-            });
-
-            await this.peripheral._serial.write(json);
-            console.log(`LED ${led} encendido`);
-        } catch (e) {
-            console.error('Error en ledOn:', e);
-        }
-    }
-
-    async ledOff(args) {
-        if (!this.peripheral.isConnected()) {
-            console.warn('No conectado');
-            return;
-        }
-
-        try {
-            const led = parseInt(args.LED);
-            const json = JSON.stringify({
-                command: 'outputsQueue',
-                testValue: [{
-                    command: 'digitalWrite',
-                    pin: led,
-                    value: 0
-                }]
-            });
-
-            await this.peripheral._serial.write(json);
-            console.log(`LED ${led} apagado`);
-        } catch (e) {
-            console.error('Error en ledOff:', e);
         }
     }
 
@@ -1351,45 +1166,6 @@ class PlayIoTBlocks {
             console.log(`RGB LED ${led} -> ${color}`);
         } catch (e) {
             console.error('Error en setRGBColorHex:', e);
-        }
-    }
-
-    async setRGBPreset(args) {
-        if (!this.peripheral.isConnected()) {
-            console.warn('No conectado');
-            return;
-        }
-
-        try {
-            const led = parseInt(args.LED);
-            const presets = {
-                'red': { r: 255, g: 0, b: 0 },
-                'green': { r: 0, g: 255, b: 0 },
-                'blue': { r: 0, g: 0, b: 255 },
-                'yellow': { r: 255, g: 255, b: 0 },
-                'cyan': { r: 0, g: 255, b: 255 },
-                'magenta': { r: 255, g: 0, b: 255 },
-                'white': { r: 255, g: 255, b: 255 },
-                'black': { r: 0, g: 0, b: 0 }
-            };
-
-            const color = presets[args.PRESET] || presets['black'];
-
-            const json = JSON.stringify({
-                command: 'outputsQueue',
-                testValue: [{
-                    command: 'setPixelColor',
-                    pixel: led,
-                    valueR: color.r,
-                    valueG: color.g,
-                    valueB: color.b
-                }]
-            });
-
-            await this.peripheral._serial.write(json);
-            console.log(`RGB LED ${led} -> ${args.PRESET}`);
-        } catch (e) {
-            console.error('Error en setRGBPreset:', e);
         }
     }
 
