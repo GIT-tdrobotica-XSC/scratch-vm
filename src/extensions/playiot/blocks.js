@@ -639,17 +639,12 @@ class PlayIoTBlocks {
                     opcode: 'buttonPressed',
                     blockType: BlockType.HAT,
                     isEdgeActivated: true,
-                    text: 'Al [CONDITION] botón [BUTTON]',
+                    text: 'Al presionar botón [BUTTON]',
                     arguments: {
                         BUTTON: {
                             type: ArgumentType.STRING,
                             menu: 'buttons',
                             defaultValue: 'A'
-                        },
-                        CONDITION: {
-                            type: ArgumentType.STRING,
-                            menu: 'buttonCondition',
-                            defaultValue: 'press'
                         }
                     },
                     category: 'Botones'
