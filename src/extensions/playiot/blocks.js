@@ -505,41 +505,12 @@ class PlayIoTBlocks {
 
                 // ========== PANTALLA OLED ==========
                 {
-                    opcode: 'oledNumber',
-                    blockType: BlockType.COMMAND,
-                    text: 'OLED mostrar [LABEL] valor [VALUE]',
-                    arguments: {
-                        LABEL: {
-                            type: ArgumentType.STRING,
-                            defaultValue: 'Temperatura'
-                        },
-                        VALUE: {
-                            type: ArgumentType.NUMBER,
-                            defaultValue: 25
-                        }
-                    },
-                    category: 'Pantalla OLED'
-                },
-                {
                     opcode: 'oledClear',
                     blockType: BlockType.COMMAND,
                     text: 'OLED limpiar pantalla',
                     category: 'Pantalla OLED'
                 },
 
-                {
-                    opcode: 'setOledAddress',
-                    blockType: BlockType.COMMAND,
-                    text: 'OLED dirección I2C [ADDRESS]',
-                    arguments: {
-                        ADDRESS: {
-                            type: ArgumentType.STRING,
-                            menu: 'oledAddress',
-                            defaultValue: '0x3C'
-                        }
-                    },
-                    category: 'Pantalla OLED'
-                },
                 {
                     opcode: 'oledTextXY',
                     blockType: BlockType.COMMAND,
@@ -666,8 +637,9 @@ class PlayIoTBlocks {
                 },
                 {
                     opcode: 'buttonPressed',
-                    blockType: BlockType.COMMAND,
-                    text: 'Botón [BUTTON] [CONDITION]',
+                    blockType: BlockType.HAT,
+                    isEdgeActivated: true,
+                    text: 'Al [CONDITION] botón [BUTTON]',
                     arguments: {
                         BUTTON: {
                             type: ArgumentType.STRING,
@@ -714,23 +686,6 @@ class PlayIoTBlocks {
                         MAX: {
                             type: ArgumentType.NUMBER,
                             defaultValue: 100
-                        }
-                    },
-                    category: 'Entradas Analógicas'
-                },
-                {
-                    opcode: 'analogThreshold',
-                    blockType: BlockType.BOOLEAN,
-                    text: '[ANALOG] > [THRESHOLD]?',
-                    arguments: {
-                        ANALOG: {
-                            type: ArgumentType.STRING,
-                            menu: 'analogInputs',
-                            defaultValue: 'POT'
-                        },
-                        THRESHOLD: {
-                            type: ArgumentType.NUMBER,
-                            defaultValue: 2048
                         }
                     },
                     category: 'Entradas Analógicas'
@@ -784,16 +739,19 @@ class PlayIoTBlocks {
                     items: [
                         { text: 'OUT · DIO2', value: '2' },
                         { text: 'OUT · DIO5', value: '5' },
-                        { text: 'OUT · DIO23', value: '23' }
+                        { text: 'OUT · DIO23', value: '23' },
+                        { text: 'OUT · Pin 25 (SRV1)', value: '25' },
+                        { text: 'OUT · Pin 26 (SRV2)', value: '26' },
+                        { text: 'OUT · Pin 27 (SRV3)', value: '27' }
                     ]
                 },
                 pwmPins: {
                     acceptReporters: true,
                     items: [
-                        { text: 'OUT · MOT1A', value: '12' },
-                        { text: 'OUT · MOT1B', value: '13' },
-                        { text: 'OUT · MOT2A', value: '18' },
-                        { text: 'OUT · MOT2B', value: '19' }
+                        { text: 'OUT · Pin 12 (MOT1A)', value: '12' },
+                        { text: 'OUT · Pin 13 (MOT1B)', value: '13' },
+                        { text: 'OUT · Pin 18 (MOT2A)', value: '18' },
+                        { text: 'OUT · Pin 19 (MOT2B)', value: '19' }
                     ]
                 },
                 digitalState: {
