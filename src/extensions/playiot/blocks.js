@@ -27,8 +27,15 @@ class PlayIoTPeripheral {
             upLimit: 0,
             downLimit: 0,
             rightLimit: 0,
-            leftLimit: 0
+            leftLimit: 0,
+            din_2: 0,
+            din_5: 0,
+            din_23: 0
         };
+
+        this.deviceFirmwareVersion = null;
+        this.serverFirmwareVersion = null;
+        this._firmwareVersionFetched = false;
 
         this._runtime.registerPeripheralExtension(extensionId, this);
         this._autoScan();
@@ -156,16 +163,43 @@ class PlayIoTPeripheral {
     _setupDataHandler() {
         if (!this._serial) return;
 
-        // Usar el callback onData
         this._serial.onData = (data) => {
             if (data.inputs) {
                 Object.keys(data.inputs).forEach(key => {
                     this.sensorData[key] = data.inputs[key];
                 });
             }
+            if (data.version && data.version !== this.deviceFirmwareVersion) {
+                this.deviceFirmwareVersion = data.version;
+                console.log('Firmware dispositivo:', data.version);
+            }
         };
 
+        // Obtener versión del servidor una sola vez por conexión
+        if (!this._firmwareVersionFetched) {
+            this._firmwareVersionFetched = true;
+            fetch(`https://playcode.tdrobotica.co/firmware/${this._extensionId}/version.txt`)
+                .then(r => r.ok ? r.text() : null)
+                .then(v => {
+                    if (v) this.serverFirmwareVersion = v.trim();
+                    console.log('Firmware servidor:', this.serverFirmwareVersion);
+                })
+                .catch(() => {});
+        }
+
         console.log('Handler de datos configurado');
+    }
+
+    getFirmwareStatus() {
+        // Sin datos del servidor: usar detección legacy (lastRxTime)
+        if (!this.serverFirmwareVersion) {
+            const lastRx = this._serial && this._serial._lastRxTime;
+            if (!lastRx) return 'unknown';
+            return (Date.now() - lastRx) < 12000 ? 'updated' : 'outdated';
+        }
+        // Con versión del servidor: comparar directamente
+        if (!this.deviceFirmwareVersion) return 'unknown';
+        return this.deviceFirmwareVersion === this.serverFirmwareVersion ? 'updated' : 'outdated';
     }
 
     // Procesamiento robusto de datos de sensores
@@ -391,6 +425,18 @@ class PlayIoTBlocks {
                 },
 
                 // ========== LEDS RGB ==========
+                {
+                    opcode: 'setRGBMatrix',
+                    blockType: BlockType.COMMAND,
+                    text: 'LEDs RGB [MATRIX]',
+                    arguments: {
+                        MATRIX: {
+                            type: ArgumentType.RGB_MATRIX,
+                            defaultValue: JSON.stringify([{r: 0, g: 0, b: 0}, {r: 0, g: 0, b: 0}, {r: 0, g: 0, b: 0}])
+                        }
+                    },
+                    category: 'RGB'
+                },
                 {
                     opcode: 'setRGBColor',
                     blockType: BlockType.COMMAND,
@@ -701,6 +747,21 @@ class PlayIoTBlocks {
                     category: 'Entradas Analógicas'
                 },
 
+                // ========== ENTRADAS DIGITALES ==========
+                {
+                    opcode: 'digitalRead',
+                    blockType: BlockType.BOOLEAN,
+                    text: 'Pin digital [PIN] encendido?',
+                    arguments: {
+                        PIN: {
+                            type: ArgumentType.STRING,
+                            menu: 'digitalInputPins',
+                            defaultValue: '2'
+                        }
+                    },
+                    category: 'Entradas Digitales'
+                },
+
                 // ========== JOYSTICK ==========
                 {
                     opcode: 'readJoystickAxis',
@@ -729,6 +790,20 @@ class PlayIoTBlocks {
                     category: 'Joystick'
                 },
                 {
+                    opcode: 'joystickDirectionPressed',
+                    blockType: BlockType.HAT,
+                    isEdgeActivated: true,
+                    text: 'Al mover joystick [DIRECTION]',
+                    arguments: {
+                        DIRECTION: {
+                            type: ArgumentType.STRING,
+                            menu: 'joystickDirections',
+                            defaultValue: 'up'
+                        }
+                    },
+                    category: 'Joystick'
+                },
+                {
                     opcode: 'joystickAngle',
                     blockType: BlockType.REPORTER,
                     text: 'Ángulo Joystick',
@@ -744,6 +819,14 @@ class PlayIoTBlocks {
                 }
             ],
             menus: {
+                digitalInputPins: {
+                    acceptReporters: false,
+                    items: [
+                        { text: 'IN · DIO2', value: '2' },
+                        { text: 'IN · DIO5', value: '5' },
+                        { text: 'IN · DIO23', value: '23' }
+                    ]
+                },
                 digitalPins: {
                     acceptReporters: true,
                     items: [
@@ -1070,6 +1153,30 @@ class PlayIoTBlocks {
             console.log(`LED ${led} parpadeando ${times} veces`);
         } catch (e) {
             console.error('Error en ledBlink:', e);
+        }
+    }
+
+    async setRGBMatrix(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            let colors;
+            try { colors = JSON.parse(args.MATRIX); } catch (e) { colors = []; }
+            for (let i = 0; i < 3; i++) {
+                const c = (colors[i] || {r: 0, g: 0, b: 0});
+                const json = JSON.stringify({
+                    command: 'outputsQueue',
+                    testValue: [{
+                        command: 'setPixelColor',
+                        pixel: i,
+                        valueR: Math.max(0, Math.min(255, c.r || 0)),
+                        valueG: Math.max(0, Math.min(255, c.g || 0)),
+                        valueB: Math.max(0, Math.min(255, c.b || 0))
+                    }]
+                });
+                await this.peripheral._serial.write(json);
+            }
+        } catch (e) {
+            console.error('Error en setRGBMatrix:', e);
         }
     }
 
@@ -1606,10 +1713,8 @@ class PlayIoTBlocks {
         }
     }
 
-    readAnalog(args) {
-        const analog = args.ANALOG;
+    _readAnalogRaw(analog) {
         let key = '';
-
         switch (analog) {
             case 'POT': key = 'analog_POT'; break;
             case 'ADC33': key = 'analog_ADC33'; break;
@@ -1617,19 +1722,26 @@ class PlayIoTBlocks {
             case 'ADC35': key = 'analog_ADC35'; break;
             default: return 0;
         }
+        return this.peripheral.sensorData[key] || 0;
+    }
 
-        const value = this.peripheral.sensorData[key] || 0;
-        return value;
+    readAnalog(args) {
+        const raw = this._readAnalogRaw(args.ANALOG);
+        return Math.round((raw / 4095) * 100);
     }
 
     analogMap(args) {
-        const value = this.readAnalog({ ANALOG: args.ANALOG });
+        const raw = this._readAnalogRaw(args.ANALOG);
         const min = parseInt(args.MIN);
         const max = parseInt(args.MAX);
-
-        // Mapear de 0-4095 a min-max
-        const mapped = Math.round(((value / 4095) * (max - min)) + min);
+        const mapped = Math.round(((raw / 4095) * (max - min)) + min);
         return Math.max(min, Math.min(max, mapped));
+    }
+
+    digitalRead(args) {
+        const pin = args.PIN;
+        const key = `din_${pin}`;
+        return (this.peripheral.sensorData[key] || 0) === 1;
     }
 
     analogThreshold(args) {
@@ -1641,8 +1753,8 @@ class PlayIoTBlocks {
     readJoystickAxis(args) {
         const axis = args.AXIS;
         const key = `analog_${axis}`;
-        const value = this.peripheral.sensorData[key] || 0;
-        return value;
+        const raw = this.peripheral.sensorData[key] || 0;
+        return Math.round((raw / 4095) * 100);
     }
 
     joystickLimit(args) {
@@ -1660,6 +1772,10 @@ class PlayIoTBlocks {
         const value = this.peripheral.sensorData[key];
         const isAtLimit = value === 1 || value === true;
         return isAtLimit;
+    }
+
+    joystickDirectionPressed(args) {
+        return this.joystickLimit(args);
     }
 
     joystickAngle(args) {

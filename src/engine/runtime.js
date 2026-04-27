@@ -103,6 +103,12 @@ const ArgumentTypeMap = (() => {
         // They are more analagous to the label on a block.
         fieldType: 'field_image'
     };
+    map[ArgumentType.RGB_MATRIX] = {
+        shadow: {
+            type: 'rgb_matrix',
+            fieldName: 'RGB_MATRIX'
+        }
+    };
     return map;
 })();
 

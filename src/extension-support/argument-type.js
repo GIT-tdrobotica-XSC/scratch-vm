@@ -41,7 +41,12 @@ const ArgumentType = {
     /**
      * Inline image on block (as part of the label)
      */
-    IMAGE: 'image'
+    IMAGE: 'image',
+
+    /**
+     * RGB color matrix for LED strip (3 LEDs)
+     */
+    RGB_MATRIX: 'rgb_matrix'
 };
 
 module.exports = ArgumentType;
