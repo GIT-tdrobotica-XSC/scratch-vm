@@ -34,6 +34,21 @@ class PlayIoTPeripheral {
         this._autoScan();
         window.playIotSerial = this._serial;
         window.playIotPeripheral = this;
+
+        // Auto-detectar dispositivos cuando se conecta un puerto USB
+        if ('serial' in navigator) {
+            navigator.serial.addEventListener('connect', (event) => {
+                const port = event.target;
+                if (!this.devices.includes(port)) {
+                    this.devices = [port];
+                    this._runtime.emit(
+                        this._runtime.constructor.PERIPHERAL_LIST_UPDATE,
+                        this.getPeripheralDeviceList()
+                    );
+                    console.log('PlayIoT: nuevo puerto detectado automáticamente');
+                }
+            });
+        }
     }
 
     async _autoScan() {
