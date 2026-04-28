@@ -1739,9 +1739,11 @@ class PlayIoTBlocks {
     }
 
     digitalRead(args) {
+        if (!this.peripheral || !this.peripheral.sensorData) return false;
         const pin = args.PIN;
         const key = `din_${pin}`;
-        return (this.peripheral.sensorData[key] || 0) === 1;
+        const val = this.peripheral.sensorData[key];
+        return val === 1 || val === true;
     }
 
     analogThreshold(args) {
