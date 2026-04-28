@@ -30,7 +30,10 @@ class PlayIoTPeripheral {
             leftLimit: 0,
             din_2: 0,
             din_5: 0,
-            din_23: 0
+            din_23: 0,
+            din_33: 0,
+            din_34: 0,
+            din_35: 0
         };
 
         this.deviceFirmwareVersion = null;
@@ -822,9 +825,12 @@ class PlayIoTBlocks {
                 digitalInputPins: {
                     acceptReporters: false,
                     items: [
-                        { text: 'IN · DIO2', value: '2' },
-                        { text: 'IN · DIO5', value: '5' },
-                        { text: 'IN · DIO23', value: '23' }
+                        { text: 'IN · DIO2',  value: '2'  },
+                        { text: 'IN · DIO5',  value: '5'  },
+                        { text: 'IN · DIO23', value: '23' },
+                        { text: 'IN · ADC33', value: '33' },
+                        { text: 'IN · ADC34', value: '34' },
+                        { text: 'IN · ADC35', value: '35' }
                     ]
                 },
                 digitalPins: {
