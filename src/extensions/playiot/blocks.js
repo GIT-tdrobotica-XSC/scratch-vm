@@ -194,13 +194,7 @@ class PlayIoTPeripheral {
     }
 
     getFirmwareStatus() {
-        // Sin datos del servidor: usar detección legacy (lastRxTime)
-        if (!this.serverFirmwareVersion) {
-            const lastRx = this._serial && this._serial._lastRxTime;
-            if (!lastRx) return 'unknown';
-            return (Date.now() - lastRx) < 12000 ? 'updated' : 'outdated';
-        }
-        // Con versión del servidor: comparar directamente
+        if (!this.serverFirmwareVersion) return 'unknown';
         if (!this.deviceFirmwareVersion) return 'unknown';
         return this.deviceFirmwareVersion === this.serverFirmwareVersion ? 'updated' : 'outdated';
     }
