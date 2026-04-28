@@ -1743,6 +1743,7 @@ class PlayIoTBlocks {
         const pin = args.PIN;
         const key = `din_${pin}`;
         const val = this.peripheral.sensorData[key];
+        console.log(`[digitalRead] pin=${pin} key=${key} val=${val} result=${val === 1 || val === true}`);
         return val === 1 || val === true;
     }
 
