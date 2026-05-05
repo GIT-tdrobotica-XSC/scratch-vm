@@ -313,6 +313,34 @@ class PlayIoTBlocks {
         this.peripheral = new PlayIoTPeripheral(runtime, 'playiot');
     }
 
+    // Menús dinámicos: leen window._playiotUsedDIOPins (actualizado por la GUI)
+    // para marcar pines ya ocupados. Se llaman cada vez que el usuario abre el dropdown.
+    getDigitalPinsMenu() {
+        const used = (typeof window !== 'undefined' && window._playiotUsedDIOPins instanceof Set)
+            ? window._playiotUsedDIOPins : new Set();
+        return [
+            { text: used.has('2')  ? 'OUT · DIO2  ⚠ en uso' : 'OUT · DIO2',  value: '2'  },
+            { text: used.has('5')  ? 'OUT · DIO5  ⚠ en uso' : 'OUT · DIO5',  value: '5'  },
+            { text: used.has('23') ? 'OUT · DIO23 ⚠ en uso' : 'OUT · DIO23', value: '23' },
+            { text: 'OUT · Pin 25 (SRV1)', value: '25' },
+            { text: 'OUT · Pin 26 (SRV2)', value: '26' },
+            { text: 'OUT · Pin 27 (SRV3)', value: '27' }
+        ];
+    }
+
+    getDigitalInputPinsMenu() {
+        const used = (typeof window !== 'undefined' && window._playiotUsedDIOPins instanceof Set)
+            ? window._playiotUsedDIOPins : new Set();
+        return [
+            { text: used.has('2')  ? 'IN · DIO2  ⚠ en uso' : 'IN · DIO2',  value: '2'  },
+            { text: used.has('5')  ? 'IN · DIO5  ⚠ en uso' : 'IN · DIO5',  value: '5'  },
+            { text: used.has('23') ? 'IN · DIO23 ⚠ en uso' : 'IN · DIO23', value: '23' },
+            { text: 'IN · ADC33', value: '33' },
+            { text: 'IN · ADC34', value: '34' },
+            { text: 'IN · ADC35', value: '35' }
+        ];
+    }
+
     getInfo() {
         return {
             id: 'playiot',
@@ -818,25 +846,11 @@ class PlayIoTBlocks {
             menus: {
                 digitalInputPins: {
                     acceptReporters: false,
-                    items: [
-                        { text: 'IN · DIO2',  value: '2'  },
-                        { text: 'IN · DIO5',  value: '5'  },
-                        { text: 'IN · DIO23', value: '23' },
-                        { text: 'IN · ADC33', value: '33' },
-                        { text: 'IN · ADC34', value: '34' },
-                        { text: 'IN · ADC35', value: '35' }
-                    ]
+                    items: 'getDigitalInputPinsMenu'
                 },
                 digitalPins: {
                     acceptReporters: true,
-                    items: [
-                        { text: 'OUT · DIO2', value: '2' },
-                        { text: 'OUT · DIO5', value: '5' },
-                        { text: 'OUT · DIO23', value: '23' },
-                        { text: 'OUT · Pin 25 (SRV1)', value: '25' },
-                        { text: 'OUT · Pin 26 (SRV2)', value: '26' },
-                        { text: 'OUT · Pin 27 (SRV3)', value: '27' }
-                    ]
+                    items: 'getDigitalPinsMenu'
                 },
                 pwmPins: {
                     acceptReporters: true,
