@@ -771,6 +771,35 @@ class PlayIoTBlocks {
                     },
                     category: 'Entradas Analógicas'
                 },
+                // Reporters directos (sin menú) — uno por cada entrada analógica
+                {
+                    opcode: 'readPOT',
+                    blockType: BlockType.REPORTER,
+                    text: 'Valor POT',
+                    arguments: {},
+                    category: 'Entradas Analógicas'
+                },
+                {
+                    opcode: 'readADC33',
+                    blockType: BlockType.REPORTER,
+                    text: 'Valor ADC33',
+                    arguments: {},
+                    category: 'Entradas Analógicas'
+                },
+                {
+                    opcode: 'readADC34',
+                    blockType: BlockType.REPORTER,
+                    text: 'Valor ADC34',
+                    arguments: {},
+                    category: 'Entradas Analógicas'
+                },
+                {
+                    opcode: 'readADC35',
+                    blockType: BlockType.REPORTER,
+                    text: 'Valor ADC35',
+                    arguments: {},
+                    category: 'Entradas Analógicas'
+                },
 
                 // ========== ENTRADAS DIGITALES ==========
                 {
@@ -784,6 +813,28 @@ class PlayIoTBlocks {
                             defaultValue: '2'
                         }
                     },
+                    category: 'Entradas Digitales'
+                },
+                // Reporters directos (sin menú) — uno por cada pin DIO
+                {
+                    opcode: 'isDIO2On',
+                    blockType: BlockType.BOOLEAN,
+                    text: 'DIO2 encendido?',
+                    arguments: {},
+                    category: 'Entradas Digitales'
+                },
+                {
+                    opcode: 'isDIO5On',
+                    blockType: BlockType.BOOLEAN,
+                    text: 'DIO5 encendido?',
+                    arguments: {},
+                    category: 'Entradas Digitales'
+                },
+                {
+                    opcode: 'isDIO23On',
+                    blockType: BlockType.BOOLEAN,
+                    text: 'DIO23 encendido?',
+                    arguments: {},
                     category: 'Entradas Digitales'
                 },
 
@@ -1762,6 +1813,17 @@ class PlayIoTBlocks {
         const val = this.peripheral.sensorData[key];
         return val === 1 || val === true;
     }
+
+    // Reporters digitales directos por pin
+    isDIO2On() { return this.digitalRead({ PIN: '2' }); }
+    isDIO5On() { return this.digitalRead({ PIN: '5' }); }
+    isDIO23On() { return this.digitalRead({ PIN: '23' }); }
+
+    // Reporters analógicos directos por entrada
+    readPOT() { return this.readAnalog({ ANALOG: 'POT' }); }
+    readADC33() { return this.readAnalog({ ANALOG: 'ADC33' }); }
+    readADC34() { return this.readAnalog({ ANALOG: 'ADC34' }); }
+    readADC35() { return this.readAnalog({ ANALOG: 'ADC35' }); }
 
     analogThreshold(args) {
         const value = this.readAnalog({ ANALOG: args.ANALOG });
