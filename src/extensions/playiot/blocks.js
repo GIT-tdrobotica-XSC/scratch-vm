@@ -848,8 +848,11 @@ class PlayIoTBlocks {
                     acceptReporters: false,
                     items: 'getDigitalInputPinsMenu'
                 },
+                // acceptReporters:false → menú es campo directo (no shadow). Permite
+                // cambiar el pin con field.setValue() sin el bug visual de desconexión
+                // que causaba el dispose+recreate vía XML.
                 digitalPins: {
-                    acceptReporters: true,
+                    acceptReporters: false,
                     items: 'getDigitalPinsMenu'
                 },
                 pwmPins: {
