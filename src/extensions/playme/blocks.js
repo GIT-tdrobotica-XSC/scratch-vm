@@ -1447,8 +1447,7 @@ class PlayMe {
         return isPressed;
     }
 
-    readAnalog(args) {
-        const analog = args.ANALOG;
+    _readAnalogRaw(analog) {
         let key = '';
 
         switch (analog) {
@@ -1456,21 +1455,27 @@ class PlayMe {
             default: return 0;
         }
 
-        const value = this.peripheral.sensorData[key] || 0;
-        return value;
+        return this.peripheral.sensorData[key] || 0;
+    }
+
+    readAnalog(args) {
+        const raw = this._readAnalogRaw(args.ANALOG);
+        // Mapear 0-4095 a 0-100 para que sea más fácil para estudiantes
+        return Math.round((raw / 4095) * 100);
     }
 
     analogMap(args) {
-        const value = this.readAnalog({ ANALOG: args.ANALOG });
+        const raw = this._readAnalogRaw(args.ANALOG);
         const min = parseInt(args.MIN);
         const max = parseInt(args.MAX);
 
-        const mapped = Math.round(((value / 4095) * (max - min)) + min);
+        // Mapear desde 0-4095 al rango personalizado
+        const mapped = Math.round(((raw / 4095) * (max - min)) + min);
         return Math.max(min, Math.min(max, mapped));
     }
 
     analogThreshold(args) {
-        const value = this.readAnalog({ ANALOG: args.ANALOG });
+        const value = this.readAnalog({ ANALOG: args.ANALOG }); // Ya está mapeado 0-100
         const threshold = parseInt(args.THRESHOLD);
         return value > threshold;
     }
