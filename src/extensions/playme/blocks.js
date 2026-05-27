@@ -20,6 +20,11 @@ class PlayMePeripheral {
             analog_POT: 0
         };
 
+        // Variables para validar versión de firmware
+        this.deviceFirmwareVersion = null;
+        this.serverFirmwareVersion = null;
+        this._firmwareVersionFetched = false;
+
         this._runtime.registerPeripheralExtension(extensionId, this);
         this._autoScan();
         window.playMeSerial = this._serial;
@@ -134,9 +139,32 @@ class PlayMePeripheral {
                     this.sensorData[key] = data.inputs[key];
                 });
             }
+            // Detectar versión del dispositivo
+            if (data.version && data.version !== this.deviceFirmwareVersion) {
+                this.deviceFirmwareVersion = data.version;
+                console.log('PlayMe Firmware detectado:', data.version);
+            }
         };
 
+        // Obtener versión del servidor una sola vez por conexión
+        if (!this._firmwareVersionFetched) {
+            this._firmwareVersionFetched = true;
+            fetch(`https://playcode.tdrobotica.co/firmware/${this._extensionId}/version.txt`)
+                .then(r => r.ok ? r.text() : null)
+                .then(v => {
+                    if (v) this.serverFirmwareVersion = v.trim();
+                    console.log('PlayMe Firmware servidor:', this.serverFirmwareVersion);
+                })
+                .catch(() => {});
+        }
+
         console.log('Handler de datos configurado');
+    }
+
+    getFirmwareStatus() {
+        if (!this.serverFirmwareVersion) return 'unknown';
+        if (!this.deviceFirmwareVersion) return 'unknown';
+        return this.deviceFirmwareVersion === this.serverFirmwareVersion ? 'updated' : 'outdated';
     }
 
     async disconnect() {
@@ -592,6 +620,54 @@ class PlayMe {
                     category: 'Pantalla OLED'
                 },
                 {
+                    opcode: 'analogWrite',
+                    blockType: BlockType.COMMAND,
+                    text: 'PWM GPIO [GPIO] valor [VALUE]',
+                    arguments: {
+                        GPIO: {
+                            type: ArgumentType.NUMBER,
+                            menu: 'digitalPins',
+                            defaultValue: '1'
+                        },
+                        VALUE: {
+                            type: ArgumentType.NUMBER,
+                            defaultValue: 128
+                        }
+                    },
+                    category: 'Salidas Digitales'
+                },
+                {
+                    opcode: 'analogRead',
+                    blockType: BlockType.REPORTER,
+                    text: 'Leer GPIO analógico [GPIO]',
+                    arguments: {
+                        GPIO: {
+                            type: ArgumentType.NUMBER,
+                            menu: 'digitalPins',
+                            defaultValue: '1'
+                        }
+                    },
+                    category: 'Entradas Analógicas'
+                },
+                {
+                    opcode: 'pinMode',
+                    blockType: BlockType.COMMAND,
+                    text: 'Configurar GPIO [GPIO] modo [MODE]',
+                    arguments: {
+                        GPIO: {
+                            type: ArgumentType.NUMBER,
+                            menu: 'digitalPins',
+                            defaultValue: '1'
+                        },
+                        MODE: {
+                            type: ArgumentType.STRING,
+                            menu: 'pinMode',
+                            defaultValue: '0'
+                        }
+                    },
+                    category: 'Configuración'
+                },
+                {
                     opcode: 'readButton',
                     blockType: BlockType.BOOLEAN,
                     text: 'Botón [BUTTON] presionado?',
@@ -660,9 +736,23 @@ class PlayMe {
                 digitalPins: {
                     acceptReporters: true,
                     items: [
-                        { text: 'Pin 2', value: '2' },
-                        { text: 'Pin 5', value: '5' },
-                        { text: 'Pin 23', value: '23' }
+                        { text: 'GPIO 1', value: '1' },
+                        { text: 'GPIO 2', value: '2' },
+                        { text: 'GPIO 3', value: '3' },
+                        { text: 'GPIO 4', value: '4' },
+                        { text: 'GPIO 5', value: '5' },
+                        { text: 'GPIO 6', value: '6' },
+                        { text: 'GPIO 7', value: '7' },
+                        { text: 'GPIO 8', value: '8' },
+                        { text: 'GPIO 9', value: '9' },
+                        { text: 'GPIO 10', value: '10' },
+                        { text: 'GPIO 11', value: '11' },
+                        { text: 'GPIO 12', value: '12' },
+                        { text: 'GPIO 13', value: '13' },
+                        { text: 'GPIO 14', value: '14' },
+                        { text: 'GPIO 15', value: '15' },
+                        { text: 'GPIO 16', value: '16' },
+                        { text: 'GPIO 17', value: '17' }
                     ]
                 },
                 digitalState: {
@@ -682,9 +772,7 @@ class PlayMe {
                 rgbLeds: {
                     acceptReporters: true,
                     items: [
-                        { text: 'LED 0', value: '0' },
-                        { text: 'LED 1', value: '1' },
-                        { text: 'LED 2', value: '2' }
+                        { text: 'LED RGB', value: '0' }
                     ]
                 },
                 rgbPresets: {
@@ -722,6 +810,13 @@ class PlayMe {
                     items: [
                         { text: 'A', value: 'A' },
                         { text: 'B', value: 'B' }
+                    ]
+                },
+                pinMode: {
+                    acceptReporters: false,
+                    items: [
+                        { text: 'ENTRADA (INPUT)', value: '0' },
+                        { text: 'SALIDA (OUTPUT)', value: '1' }
                     ]
                 },
                 analogInputs: {
@@ -772,13 +867,13 @@ class PlayMe {
                 command: 'outputsQueue',
                 testValue: [{
                     command: 'digitalWrite',
-                    pin: parseInt(args.PIN),
+                    gpio: parseInt(args.PIN),
                     value: parseInt(args.STATE)
                 }]
             });
 
             await this.peripheral._serial.write(json);
-            console.log(`Pin ${args.PIN} -> ${args.STATE}`);
+            console.log(`GPIO ${args.PIN} -> ${args.STATE}`);
         } catch (e) {
             console.error('Error en digitalWrite:', e);
         }
@@ -796,13 +891,13 @@ class PlayMe {
                 command: 'outputsQueue',
                 testValue: [{
                     command: 'digitalWrite',
-                    pin: parseInt(args.PIN),
+                    gpio: parseInt(args.PIN),
                     value: state
                 }]
             });
 
             await this.peripheral._serial.write(json);
-            console.log(`Pin ${args.PIN} -> ${args.STATE_QUICK}`);
+            console.log(`GPIO ${args.PIN} -> ${args.STATE_QUICK}`);
         } catch (e) {
             console.error('Error en digitalWriteQuick:', e);
         }
@@ -815,7 +910,6 @@ class PlayMe {
         }
 
         try {
-            const led = parseInt(args.LED);
             const r = Math.max(0, Math.min(255, parseInt(args.R)));
             const g = Math.max(0, Math.min(255, parseInt(args.G)));
             const b = Math.max(0, Math.min(255, parseInt(args.B)));
@@ -823,16 +917,15 @@ class PlayMe {
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{
-                    command: 'setPixelColor',
-                    pixel: led,
-                    valueR: r,
-                    valueG: g,
-                    valueB: b
+                    command: 'setRGB',
+                    r: r,
+                    g: g,
+                    b: b
                 }]
             });
 
             await this.peripheral._serial.write(json);
-            console.log(`RGB LED ${led} -> R:${r} G:${g} B:${b}`);
+            console.log(`RGB LED -> R:${r} G:${g} B:${b}`);
         } catch (e) {
             console.error('Error en setRGBColor:', e);
         }
@@ -845,7 +938,6 @@ class PlayMe {
         }
 
         try {
-            const led = parseInt(args.LED);
             const color = args.COLOR;
 
             const hex = color.replace('#', '');
@@ -856,16 +948,15 @@ class PlayMe {
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{
-                    command: 'setPixelColor',
-                    pixel: led,
-                    valueR: r,
-                    valueG: g,
-                    valueB: b
+                    command: 'setRGB',
+                    r: r,
+                    g: g,
+                    b: b
                 }]
             });
 
             await this.peripheral._serial.write(json);
-            console.log(`RGB LED ${led} -> ${color}`);
+            console.log(`RGB LED -> ${color}`);
         } catch (e) {
             console.error('Error en setRGBColorHex:', e);
         }
@@ -878,7 +969,6 @@ class PlayMe {
         }
 
         try {
-            const led = parseInt(args.LED);
             const presets = {
                 'red': { r: 255, g: 0, b: 0 },
                 'green': { r: 0, g: 255, b: 0 },
@@ -895,16 +985,15 @@ class PlayMe {
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{
-                    command: 'setPixelColor',
-                    pixel: led,
-                    valueR: color.r,
-                    valueG: color.g,
-                    valueB: color.b
+                    command: 'setRGB',
+                    r: color.r,
+                    g: color.g,
+                    b: color.b
                 }]
             });
 
             await this.peripheral._serial.write(json);
-            console.log(`RGB LED ${led} -> ${args.PRESET}`);
+            console.log(`RGB LED -> ${args.PRESET}`);
         } catch (e) {
             console.error('Error en setRGBPreset:', e);
         }
@@ -917,20 +1006,18 @@ class PlayMe {
         }
 
         try {
-            const led = parseInt(args.LED);
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{
-                    command: 'setPixelColor',
-                    pixel: led,
-                    valueR: 0,
-                    valueG: 0,
-                    valueB: 0
+                    command: 'setRGB',
+                    r: 0,
+                    g: 0,
+                    b: 0
                 }]
             });
 
             await this.peripheral._serial.write(json);
-            console.log(`RGB LED ${led} apagado`);
+            console.log('RGB LED apagado');
         } catch (e) {
             console.error('Error en rgbOff:', e);
         }
@@ -943,20 +1030,17 @@ class PlayMe {
         }
 
         try {
-            for (let i = 0; i < 3; i++) {
-                const json = JSON.stringify({
-                    command: 'outputsQueue',
-                    testValue: [{
-                        command: 'setPixelColor',
-                        pixel: i,
-                        valueR: 0,
-                        valueG: 0,
-                        valueB: 0
-                    }]
-                });
-                await this.peripheral._serial.write(json);
-            }
-            console.log('Todos los LEDs RGB apagados');
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'setRGB',
+                    r: 0,
+                    g: 0,
+                    b: 0
+                }]
+            });
+            await this.peripheral._serial.write(json);
+            console.log('LED RGB apagado');
         } catch (e) {
             console.error('Error en allRGBOff:', e);
         }
@@ -975,22 +1059,76 @@ class PlayMe {
             const g = parseInt(hex.substring(2, 4), 16);
             const b = parseInt(hex.substring(4, 6), 16);
 
-            for (let i = 0; i < 3; i++) {
-                const json = JSON.stringify({
-                    command: 'outputsQueue',
-                    testValue: [{
-                        command: 'setPixelColor',
-                        pixel: i,
-                        valueR: r,
-                        valueG: g,
-                        valueB: b
-                    }]
-                });
-                await this.peripheral._serial.write(json);
-            }
-            console.log(`Todos los LEDs RGB -> ${color}`);
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'setRGB',
+                    r: r,
+                    g: g,
+                    b: b
+                }]
+            });
+            await this.peripheral._serial.write(json);
+            console.log(`LED RGB -> ${color}`);
         } catch (e) {
             console.error('Error en setAllRGB:', e);
+        }
+    }
+
+    async analogWrite(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            const gpio = parseInt(args.GPIO);
+            const value = Math.max(0, Math.min(255, parseInt(args.VALUE)));
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'analogWrite',
+                    gpio: gpio,
+                    value: value
+                }]
+            });
+            await this.peripheral._serial.write(json);
+            console.log(`PWM GPIO ${gpio} -> ${value}`);
+        } catch (e) {
+            console.error('Error en analogWrite:', e);
+        }
+    }
+
+    async analogRead(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            const gpio = parseInt(args.GPIO);
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'analogRead',
+                    gpio: gpio
+                }]
+            });
+            await this.peripheral._serial.write(json);
+        } catch (e) {
+            console.error('Error en analogRead:', e);
+        }
+    }
+
+    async pinMode(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            const gpio = parseInt(args.GPIO);
+            const mode = parseInt(args.MODE);
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{
+                    command: 'pinMode',
+                    gpio: gpio,
+                    mode: mode
+                }]
+            });
+            await this.peripheral._serial.write(json);
+            console.log(`GPIO ${gpio} modo ${mode === 0 ? 'INPUT' : 'OUTPUT'}`);
+        } catch (e) {
+            console.error('Error en pinMode:', e);
         }
     }
 
