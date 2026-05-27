@@ -17,7 +17,12 @@ class PlayMePeripheral {
         this.sensorData = {
             button_A: 0,
             button_B: 0,
-            analog_POT: 0
+            pot: 0,
+            gpio1: 0, gpio2: 0, gpio3: 0, gpio4: 0,
+            gpio5: 0, gpio6: 0, gpio7: 0, gpio8: 0,
+            gpio9: 0, gpio10: 0, gpio11: 0,
+            gpio12: 0, gpio13: 0, gpio14: 0, gpio15: 0,
+            gpio16: 0, gpio17: 0
         };
 
         // Variables para validar versión de firmware
@@ -1447,7 +1452,7 @@ class PlayMe {
         let key = '';
 
         switch (analog) {
-            case 'POT': key = 'analog_POT'; break;
+            case 'POT': key = 'pot'; break;
             default: return 0;
         }
 
