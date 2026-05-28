@@ -21,39 +21,28 @@ class PlayMeSerial {
         this.port = port;
 
         try {
-            // Siempre cerrar antes de abrir: evita el caso donde el puerto
-            // quedó abierto pero con streams bloqueados (ej: post-esptool-js)
-            try {
-                await this.port.close();
-            } catch (e) { /* ignorar: ya estaba cerrado */ }
-
-            // Espera extra: dar tiempo al OS para liberar el puerto
-            // después de que esptool-js lo cerró
-            await new Promise(r => setTimeout(r, 500));
-
-            await this.port.open({ baudRate: 115200 });
-
-            // CRÍTICO: Forzar DTR/RTS a un estado conocido.
-            // Después del flasheo, esptool puede dejar estas señales en un estado
-            // que mantiene al ESP32 en reset (DTR→EN) o en modo boot (RTS→GPIO0).
-            // Liberamos ambas señales primero.
-            await this.port.setSignals({
-                dataTerminalReady: false,
-                requestToSend: false
-            });
-            await new Promise(r => setTimeout(r, 100));
-
-            // Pulso de reset limpio: DTR controla EN en el circuito de auto-reset
-            await this.port.setSignals({ dataTerminalReady: true });
-            await new Promise(r => setTimeout(r, 50));
-            await this.port.setSignals({ dataTerminalReady: false });
-
-            // Esperar que el firmware arranque limpiamente después del reset
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Solo abrir si no está ya abierto (streams nulos = cerrado)
+            if (this.port.readable === null || this.port.writable === null) {
+                await this.port.open({ baudRate: 115200 });
+            }
 
             this.keepReading = true;
             this.connected = true;
             this.buffer = '';
+
+            // Reset via CH340: RTS → EN (reset), DTR → GPIO0 (boot)
+            // DTR=0+RTS=1 → EN bajo (reset). DTR=1+RTS=0 → EN alto (boot).
+            try {
+                await this.port.setSignals({ dataTerminalReady: false, requestToSend: true });
+                await new Promise(r => setTimeout(r, 100));
+                await this.port.setSignals({ dataTerminalReady: true, requestToSend: false });
+                await new Promise(r => setTimeout(r, 200));
+            } catch (e) {
+                console.warn('Error enviando señales de reset:', e.message);
+            }
+
+            // Esperar que el firmware arranque
+            await new Promise(resolve => setTimeout(resolve, 1000));
 
             console.log('Conectado al PlayMe');
 
