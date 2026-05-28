@@ -88,27 +88,7 @@ class PlayMeSerial {
     async releasePort() {
         console.log('🔓 Liberando puerto para actualización de firmware...');
         this.keepReading = false;
-
-        if (this.writer) {
-            try { await this.writer.close(); } catch (e) { }
-            this.writer = null;
-        }
-
-        if (this.reader) {
-            try { await this.reader.cancel(); } catch (e) { }
-            this.reader = null;
-        }
-
-        if (this.readableStreamClosed) {
-            try { await this.readableStreamClosed.catch(() => { }); } catch (e) { }
-            this.readableStreamClosed = null;
-        }
-
-        if (this.port) {
-            try { await this.port.close(); } catch (e) { }
-        }
-
-        this.connected = false;
+        await this._cleanupBeforeReconnect();
         console.log('✅ Puerto cerrado y listo para esptool-js.');
     }
 
