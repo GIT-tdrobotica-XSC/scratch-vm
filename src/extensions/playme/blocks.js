@@ -414,11 +414,16 @@ class PlayMe {
                 {
                     opcode: 'oledNumber',
                     blockType: BlockType.COMMAND,
-                    text: 'OLED mostrar [LABEL] valor [VALUE]',
+                    text: 'OLED línea [LINE] mostrar [LABEL] valor [VALUE]',
                     arguments: {
+                        LINE: {
+                            type: ArgumentType.NUMBER,
+                            menu: 'oledLines',
+                            defaultValue: '0'
+                        },
                         LABEL: {
                             type: ArgumentType.STRING,
-                            defaultValue: 'Temperatura'
+                            defaultValue: 'Temp'
                         },
                         VALUE: {
                             type: ArgumentType.NUMBER,
@@ -741,23 +746,23 @@ class PlayMe {
                 digitalPins: {
                     acceptReporters: true,
                     items: [
-                        { text: 'GPIO 1', value: '1' },
-                        { text: 'GPIO 2', value: '2' },
-                        { text: 'GPIO 3', value: '3' },
-                        { text: 'GPIO 4', value: '4' },
-                        { text: 'GPIO 5', value: '5' },
-                        { text: 'GPIO 6', value: '6' },
-                        { text: 'GPIO 7', value: '7' },
-                        { text: 'GPIO 8', value: '8' },
-                        { text: 'GPIO 9', value: '9' },
-                        { text: 'GPIO 10', value: '10' },
-                        { text: 'GPIO 11', value: '11' },
-                        { text: 'GPIO 12', value: '12' },
-                        { text: 'GPIO 13', value: '13' },
-                        { text: 'GPIO 14', value: '14' },
-                        { text: 'GPIO 15', value: '15' },
-                        { text: 'GPIO 16', value: '16' },
-                        { text: 'GPIO 17', value: '17' }
+                        { text: 'Pin 1',  value: '1'  },
+                        { text: 'Pin 2',  value: '2'  },
+                        { text: 'Pin 3',  value: '3'  },
+                        { text: 'Pin 4',  value: '4'  },
+                        { text: 'Pin 8',  value: '8'  },
+                        { text: 'Pin 9',  value: '9'  },
+                        { text: 'Pin 10', value: '10' },
+                        { text: 'Pin 11', value: '11' },
+                        { text: 'Pin 12', value: '12' },
+                        { text: 'Pin 13', value: '13' },
+                        { text: 'Pin 14', value: '14' },
+                        { text: 'Pin 33', value: '33' },
+                        { text: 'Pin 34', value: '34' },
+                        { text: 'Pin 35', value: '35' },
+                        { text: 'Pin 36', value: '36' },
+                        { text: 'Pin 37', value: '37' },
+                        { text: 'Pin 38', value: '38' }
                     ]
                 },
                 digitalState: {
@@ -777,7 +782,8 @@ class PlayMe {
                 rgbLeds: {
                     acceptReporters: true,
                     items: [
-                        { text: 'LED RGB', value: '0' }
+                        { text: 'LED RGB 0', value: '0' },
+                        { text: 'LED RGB 1', value: '1' }
                     ]
                 },
                 rgbPresets: {
@@ -1154,13 +1160,14 @@ class PlayMe {
                 command: 'outputsQueue',
                 testValue: [{
                     command: 'oledNumber',
+                    line: parseInt(args.LINE),
                     label: args.LABEL,
                     value: parseInt(args.VALUE)
                 }]
             });
 
             await this.peripheral._serial.write(json);
-            console.log(`OLED -> ${args.LABEL}: ${args.VALUE}`);
+            console.log(`OLED línea ${args.LINE} -> ${args.LABEL}: ${args.VALUE}`);
         } catch (e) {
             console.error('Error en oledNumber:', e);
         }
