@@ -473,11 +473,11 @@ class PlayMe {
                     arguments: {
                         PIN_A: {
                             type: ArgumentType.NUMBER,
-                            defaultValue: 26
+                            defaultValue: 1
                         },
                         PIN_B: {
                             type: ArgumentType.NUMBER,
-                            defaultValue: 27
+                            defaultValue: 2
                         },
                         SPEED: {
                             type: ArgumentType.NUMBER,
@@ -493,11 +493,11 @@ class PlayMe {
                     arguments: {
                         PIN_A: {
                             type: ArgumentType.NUMBER,
-                            defaultValue: 26
+                            defaultValue: 1
                         },
                         PIN_B: {
                             type: ArgumentType.NUMBER,
-                            defaultValue: 27
+                            defaultValue: 2
                         }
                     },
                     category: 'Motores'
@@ -731,7 +731,7 @@ class PlayMe {
                         },
                         THRESHOLD: {
                             type: ArgumentType.NUMBER,
-                            defaultValue: 2048
+                            defaultValue: 50
                         }
                     },
                     category: 'Entradas Analógicas'
@@ -915,22 +915,18 @@ class PlayMe {
         }
 
         try {
+            const led = parseInt(args.LED);
             const r = Math.max(0, Math.min(255, parseInt(args.R)));
             const g = Math.max(0, Math.min(255, parseInt(args.G)));
             const b = Math.max(0, Math.min(255, parseInt(args.B)));
 
             const json = JSON.stringify({
                 command: 'outputsQueue',
-                testValue: [{
-                    command: 'setRGB',
-                    r: r,
-                    g: g,
-                    b: b
-                }]
+                testValue: [{ command: 'setRGB', led: led, r: r, g: g, b: b }]
             });
 
             await this.peripheral._serial.write(json);
-            console.log(`RGB LED -> R:${r} G:${g} B:${b}`);
+            console.log(`RGB LED ${led} -> R:${r} G:${g} B:${b}`);
         } catch (e) {
             console.error('Error en setRGBColor:', e);
         }
@@ -943,8 +939,8 @@ class PlayMe {
         }
 
         try {
+            const led = parseInt(args.LED);
             const color = args.COLOR;
-
             const hex = color.replace('#', '');
             const r = parseInt(hex.substring(0, 2), 16);
             const g = parseInt(hex.substring(2, 4), 16);
@@ -952,16 +948,11 @@ class PlayMe {
 
             const json = JSON.stringify({
                 command: 'outputsQueue',
-                testValue: [{
-                    command: 'setRGB',
-                    r: r,
-                    g: g,
-                    b: b
-                }]
+                testValue: [{ command: 'setRGB', led: led, r: r, g: g, b: b }]
             });
 
             await this.peripheral._serial.write(json);
-            console.log(`RGB LED -> ${color}`);
+            console.log(`RGB LED ${led} -> ${color}`);
         } catch (e) {
             console.error('Error en setRGBColorHex:', e);
         }
@@ -974,6 +965,7 @@ class PlayMe {
         }
 
         try {
+            const led = parseInt(args.LED);
             const presets = {
                 'red': { r: 255, g: 0, b: 0 },
                 'green': { r: 0, g: 255, b: 0 },
@@ -989,16 +981,11 @@ class PlayMe {
 
             const json = JSON.stringify({
                 command: 'outputsQueue',
-                testValue: [{
-                    command: 'setRGB',
-                    r: color.r,
-                    g: color.g,
-                    b: color.b
-                }]
+                testValue: [{ command: 'setRGB', led: led, r: color.r, g: color.g, b: color.b }]
             });
 
             await this.peripheral._serial.write(json);
-            console.log(`RGB LED -> ${args.PRESET}`);
+            console.log(`RGB LED ${led} -> ${args.PRESET}`);
         } catch (e) {
             console.error('Error en setRGBPreset:', e);
         }
@@ -1011,18 +998,14 @@ class PlayMe {
         }
 
         try {
+            const led = parseInt(args.LED);
             const json = JSON.stringify({
                 command: 'outputsQueue',
-                testValue: [{
-                    command: 'setRGB',
-                    r: 0,
-                    g: 0,
-                    b: 0
-                }]
+                testValue: [{ command: 'setRGB', led: led, r: 0, g: 0, b: 0 }]
             });
 
             await this.peripheral._serial.write(json);
-            console.log('RGB LED apagado');
+            console.log(`RGB LED ${led} apagado`);
         } catch (e) {
             console.error('Error en rgbOff:', e);
         }
