@@ -13,7 +13,7 @@ class PlayMeSerial {
 
     async connect(port) {
         if (!port) {
-            console.error('No se proporcionó puerto');
+            console.error('[PlayMe] No se proporcionó puerto');
             return;
         }
 
@@ -22,16 +22,19 @@ class PlayMeSerial {
         this.port = port;
 
         try {
-            // Solo abrir si no está ya abierto (streams nulos = cerrado)
-            if (this.port.readable === null || this.port.writable === null) {
-                await this.port.open({ baudRate: 115200 });
+            // After abrupt disconnect, Chrome leaves port.readable/writable as errored
+            // streams (not null). Close them before reopening to get a fresh state.
+            if (this.port.readable !== null || this.port.writable !== null) {
+                try { await this.port.close(); } catch (e) { }
             }
+
+            await this.port.open({ baudRate: 115200 });
 
             this.keepReading = true;
             this.connected = true;
             this.buffer = '';
 
-            console.log('Conectado al PlayMe');
+            console.log('[PlayMe] Conectado');
 
             const textDecoder = new TextDecoderStream();
             this.readableStreamClosed = this.port.readable.pipeTo(textDecoder.writable);
@@ -39,7 +42,7 @@ class PlayMeSerial {
 
             this.readableStreamClosed.catch(err => {
                 if (err && err.message && err.message.includes('device has been lost')) {
-                    console.log('Dispositivo desconectado');
+                    console.log('[PlayMe] Dispositivo desconectado físicamente (readable)');
                     this._handleUnexpectedDisconnect();
                 }
             });
@@ -50,7 +53,7 @@ class PlayMeSerial {
 
             this.writableStreamClosed.catch(err => {
                 if (err && err.message && err.message.includes('device has been lost')) {
-                    console.log('Dispositivo desconectado durante escritura');
+                    console.log('[PlayMe] Dispositivo desconectado físicamente (writable)');
                     this._handleUnexpectedDisconnect();
                 }
             });
@@ -58,7 +61,7 @@ class PlayMeSerial {
             this.readLoop();
 
         } catch (err) {
-            console.error('Error al conectar:', err);
+            console.error('[PlayMe] Error al conectar:', err);
             this.connected = false;
             this.port = null;
             throw err;
@@ -71,6 +74,9 @@ class PlayMeSerial {
         this.connected = false;
         this.keepReading = false;
 
+        // Async cleanup so port is properly closed before any reconnect attempt
+        this._cleanupBeforeReconnect().catch(() => {});
+
         if (this.onDisconnect) {
             this.onDisconnect();
         }
@@ -80,7 +86,7 @@ class PlayMeSerial {
         this.keepReading = false;
         await this._cleanupBeforeReconnect();
         this.connected = false;
-        console.log('Puerto desconectado');
+        console.log('[PlayMe] Puerto desconectado');
     }
 
     /**
@@ -178,7 +184,7 @@ class PlayMeSerial {
             }
         } catch (err) {
             if (err && err.message && err.message.includes('device has been lost')) {
-                console.log('Dispositivo desconectado');
+                console.log('[PlayMe] Dispositivo desconectado físicamente (readLoop)');
                 this._handleUnexpectedDisconnect();
                 return;
             }
@@ -188,7 +194,7 @@ class PlayMeSerial {
             }
 
             if (this.keepReading && err) {
-                console.error('Error en readLoop:', err.message || err);
+                console.error('[PlayMe] Error en readLoop:', err.message || err);
             }
         }
     }
@@ -234,21 +240,21 @@ class PlayMeSerial {
 
     async write(msg) {
         if (!this.writer) {
-            console.error('No hay conexión activa');
+            console.error('[PlayMe] No hay conexión activa');
             return;
         }
 
         try {
             await this.writer.write(msg + '\n');
-            console.log('TX:', msg);
+            console.log('[PlayMe] TX:', msg);
         } catch (err) {
             if (err && err.message && err.message.includes('device has been lost')) {
-                console.log('Dispositivo desconectado durante escritura');
+                console.log('[PlayMe] Dispositivo desconectado durante escritura');
                 this._handleUnexpectedDisconnect();
                 return;
             }
 
-            console.error('Error enviando datos:', err);
+            console.error('[PlayMe] Error enviando datos:', err);
             throw err;
         }
     }
