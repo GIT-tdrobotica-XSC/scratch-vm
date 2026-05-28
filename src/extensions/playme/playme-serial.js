@@ -30,20 +30,6 @@ class PlayMeSerial {
             this.connected = true;
             this.buffer = '';
 
-            // Reset via CH340: RTS → EN (reset), DTR → GPIO0 (boot)
-            // DTR=0+RTS=1 → EN bajo (reset). DTR=1+RTS=0 → EN alto (boot).
-            try {
-                await this.port.setSignals({ dataTerminalReady: false, requestToSend: true });
-                await new Promise(r => setTimeout(r, 100));
-                await this.port.setSignals({ dataTerminalReady: true, requestToSend: false });
-                await new Promise(r => setTimeout(r, 200));
-            } catch (e) {
-                console.warn('Error enviando señales de reset:', e.message);
-            }
-
-            // Esperar que el firmware arranque
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
             console.log('Conectado al PlayMe');
 
             const textDecoder = new TextDecoderStream();
