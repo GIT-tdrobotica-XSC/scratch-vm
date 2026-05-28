@@ -7,6 +7,7 @@ class PlayMeSerial {
         this.connected = false;
         this.buffer = '';
         this.readableStreamClosed = null;
+        this.writableStreamClosed = null;
         this._lastRxTime = null;
     }
 
@@ -44,10 +45,10 @@ class PlayMeSerial {
             });
 
             const textEncoder = new TextEncoderStream();
-            const writableClosed = textEncoder.readable.pipeTo(this.port.writable);
+            this.writableStreamClosed = textEncoder.readable.pipeTo(this.port.writable);
             this.writer = textEncoder.writable.getWriter();
 
-            writableClosed.catch(err => {
+            this.writableStreamClosed.catch(err => {
                 if (err && err.message && err.message.includes('device has been lost')) {
                     console.log('Dispositivo desconectado durante escritura');
                     this._handleUnexpectedDisconnect();
@@ -109,6 +110,7 @@ class PlayMeSerial {
 
     async _cleanupBeforeReconnect() {
         try {
+            // Close writer first — triggers writable pipe to drain
             if (this.writer) {
                 await this.writer.close().catch(e => {
                     if (e && e.message && !e.message.includes('device has been lost')) {
@@ -118,6 +120,7 @@ class PlayMeSerial {
                 this.writer = null;
             }
 
+            // Cancel reader — triggers readable pipe to abort
             if (this.reader) {
                 try {
                     await this.reader.cancel().catch(e => { });
@@ -125,13 +128,21 @@ class PlayMeSerial {
                 this.reader = null;
             }
 
+            // Wait BOTH pipes to fully complete (releases port.readable and port.writable)
+            const pipeWaits = [];
             if (this.readableStreamClosed) {
-                await this.readableStreamClosed.catch(() => { });
-                this.readableStreamClosed = null;
+                pipeWaits.push(this.readableStreamClosed.catch(() => { }));
             }
+            if (this.writableStreamClosed) {
+                pipeWaits.push(this.writableStreamClosed.catch(() => { }));
+            }
+            if (pipeWaits.length > 0) {
+                await Promise.all(pipeWaits);
+            }
+            this.readableStreamClosed = null;
+            this.writableStreamClosed = null;
 
-            await new Promise(resolve => setTimeout(resolve, 100));
-
+            // Now safe to close the port — both pipes have released their locks
             if (this.port) {
                 try {
                     await this.port.close();
