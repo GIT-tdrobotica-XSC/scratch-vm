@@ -26,6 +26,7 @@ const builtinExtensions = {
     gdxfor: () => require('../extensions/scratch3_gdx_for'),
     playiot: () => require('../extensions/playiot'),
     playme: () => require('../extensions/playme'),
+    teachablemachine: () => require('../extensions/teachablemachine'),
 };
 
 /**

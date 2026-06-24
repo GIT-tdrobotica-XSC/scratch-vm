@@ -1353,7 +1353,8 @@ class Runtime extends EventEmitter {
         const supportedCallbackKeys = [
             'MAKE_A_LIST',
             'MAKE_A_PROCEDURE',
-            'MAKE_A_VARIABLE'
+            'MAKE_A_VARIABLE',
+            'OPEN_ML_STUDIO'
         ];
         if (supportedCallbackKeys.indexOf(buttonInfo.func) < 0) {
             log.error(
