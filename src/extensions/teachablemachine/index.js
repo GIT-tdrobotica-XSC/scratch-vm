@@ -9,10 +9,11 @@ const TFJS_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.m
 const MOBILENET_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js';
 const KNN_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/knn-classifier@1.2.4/dist/knn-classifier.min.js';
 const POSE_DETECTION_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js';
-// Audio: tfjs 1.5.2 + speech-commands 0.4.4 (stack 1.x de Google TM; evita el error
-// de shader que da speech-commands con tfjs 3.x). Coexiste con tfjs 3.x vía this._tf.
+// Audio: tfjs 1.5.2 + speech-commands 0.4.2 (que requiere tfjs ^1.5.2; stack 1.x de
+// Google TM; evita el error de shader de speech-commands con tfjs 3.x). Coexiste con
+// tfjs 3.x vía this._tf.
 const TFJS_AUDIO_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.5.2/dist/tf.min.js';
-const SPEECH_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.4/dist/speech-commands.min.js';
+const SPEECH_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.2/dist/speech-commands.min.js';
 const PREDICT_INTERVAL = 200;
 const POSE_MIN_SCORE = 0.2;
 
