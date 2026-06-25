@@ -9,7 +9,10 @@ const TFJS_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.m
 const MOBILENET_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js';
 const KNN_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/knn-classifier@1.2.4/dist/knn-classifier.min.js';
 const POSE_DETECTION_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js';
-const SPEECH_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.5.4/dist/speech-commands.min.js';
+// Audio: tfjs 1.5.2 + speech-commands 0.4.4 (stack 1.x de Google TM; evita el error
+// de shader que da speech-commands con tfjs 3.x). Coexiste con tfjs 3.x vía this._tf.
+const TFJS_AUDIO_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.5.2/dist/tf.min.js';
+const SPEECH_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.4/dist/speech-commands.min.js';
 const PREDICT_INTERVAL = 200;
 const POSE_MIN_SCORE = 0.2;
 
@@ -25,6 +28,7 @@ class Scratch3TeachableMachine {
 
         // Modelo KNN
         this._classifier = null;
+        this._tf = null;       // referencia a tfjs 3.x (imagen/pose)
         this._mobilenet = null;
         this._detector = null; // MoveNet (pose-detection)
         this._modelType = 'image'; // 'image' | 'pose' | 'audio'
@@ -97,15 +101,10 @@ class Scratch3TeachableMachine {
     // Carga las librerías necesarias según el tipo de modelo.
     // image → MobileNet · pose → PoseNet · audio → SpeechCommands. TF.js siempre.
     async _loadLibrary (type) {
-        await this._injectScript(TFJS_URL);
-
         if (type === 'audio') {
-            // speech-commands es inestable en WebGL (falla al compilar shaders);
-            // el backend CPU corre bien el modelo de audio (es ligero).
-            try {
-                await window.tf.setBackend('cpu');
-                await window.tf.ready();
-            } catch (e) { /* seguir con el backend por defecto */ }
+            // Stack de Google TM: tfjs 1.3.1 + speech-commands 0.4.0 (sin shader error)
+            await this._injectScript(TFJS_AUDIO_URL);
+            window.__tmTf1 = window.__tmTf1 || window.tf;
             await this._injectScript(SPEECH_URL);
             if (!this._baseRecognizer) {
                 this._baseRecognizer = window.speechCommands.create('BROWSER_FFT');
@@ -115,16 +114,15 @@ class Scratch3TeachableMachine {
             return;
         }
 
-        // Imagen/pose usan WebGL (rápido para MobileNet/MoveNet)
-        try {
-            await window.tf.setBackend('webgl');
-            await window.tf.ready();
-        } catch (e) { /* seguir con el backend por defecto */ }
+        // Imagen/pose: tfjs 3.x (capturar la referencia estable)
+        await this._injectScript(TFJS_URL);
+        window.__tmTf3 = window.__tmTf3 || window.tf;
+        this._tf = window.__tmTf3;
 
         await this._injectScript(KNN_URL);
         if (type === 'pose') {
             await this._injectScript(POSE_DETECTION_URL);
-            if (window.tf && window.tf.ready) await window.tf.ready();
+            if (this._tf && this._tf.ready) await this._tf.ready();
             if (!this._detector) {
                 this._detector = await window.poseDetection.createDetector(
                     window.poseDetection.SupportedModels.MoveNet,
@@ -228,7 +226,7 @@ class Scratch3TeachableMachine {
                     );
                     const vec = this._poseToVector(poses && poses[0]);
                     if (!vec) { this._isPredicting = false; return; }
-                    features = window.tf.tensor1d(vec);
+                    features = this._tf.tensor1d(vec);
                 } else {
                     features = this._mobilenet.infer(this._videoEl, true);
                 }
@@ -309,7 +307,7 @@ class Scratch3TeachableMachine {
         let minSamples = Infinity;
         for (const label in model.dataset) {
             const {data, shape} = model.dataset[label];
-            dataset[label] = window.tf.tensor2d(data, shape);
+            dataset[label] = this._tf.tensor2d(data, shape);
             minSamples = Math.min(minSamples, shape[0]);
         }
         this._classifier.setClassifierDataset(dataset);
