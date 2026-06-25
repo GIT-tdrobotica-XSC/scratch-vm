@@ -8,7 +8,9 @@ const STORAGE_KEY = 'playcode_ml_models';
 const TFJS_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js';
 const MOBILENET_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js';
 const KNN_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/knn-classifier@1.2.4/dist/knn-classifier.min.js';
+const POSENET_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet@2.2.2/dist/posenet.min.js';
 const PREDICT_INTERVAL = 200;
+const POSE_MIN_SCORE = 0.2;
 
 class Scratch3TeachableMachine {
     constructor (runtime) {
@@ -19,11 +21,13 @@ class Scratch3TeachableMachine {
 
         // Estado de librerías
         this._libReady = false;
-        this._libLoadPromise = null;
 
         // Modelo KNN
         this._classifier = null;
         this._mobilenet = null;
+        this._posenet = null;
+        this._modelType = 'image'; // 'image' | 'pose'
+        this._lastPoseVec = null;  // último vector de keypoints (modo pose)
         this._modelName = null;
         this._classMap = {}; // { '0': 'Mano abierta', '1': 'Puño', ... }
         this._classLabels = []; // nombres en orden
@@ -83,22 +87,51 @@ class Scratch3TeachableMachine {
         });
     }
 
-    _loadLibrary () {
-        if (this._libReady) return Promise.resolve();
-        if (this._libLoadPromise) return this._libLoadPromise;
-        this._libLoadPromise = this._injectScript(TFJS_URL)
-            .then(() => this._injectScript(MOBILENET_URL))
-            .then(() => this._injectScript(KNN_URL))
-            .then(async () => {
+    // Carga las librerías necesarias según el tipo de modelo.
+    // image → MobileNet · pose → PoseNet. KNN y TF.js siempre.
+    async _loadLibrary (type) {
+        const needsPose = type === 'pose';
+        await this._injectScript(TFJS_URL);
+        await this._injectScript(KNN_URL);
+        if (needsPose) {
+            await this._injectScript(POSENET_URL);
+            if (!this._posenet) {
+                this._posenet = await window.posenet.load({
+                    architecture: 'MobileNetV1',
+                    outputStride: 16,
+                    inputResolution: {width: 257, height: 257},
+                    multiplier: 0.75
+                });
+            }
+        } else {
+            await this._injectScript(MOBILENET_URL);
+            if (!this._mobilenet) {
                 this._mobilenet = await window.mobilenet.load();
-                this._libReady = true;
-            })
-            .catch(err => {
-                this._libLoadPromise = null;
-                console.error('[TM] Error cargando librerías:', err);
-                throw err;
-            });
-        return this._libLoadPromise;
+            }
+        }
+        this._libReady = true;
+    }
+
+    // Convierte una pose de PoseNet en un vector normalizado (invariante a
+    // traslación y escala). Debe coincidir con el de ML Studio para que los
+    // modelos guardados sean compatibles.
+    _poseToVector (pose) {
+        if (!pose || !pose.keypoints) return null;
+        const kp = pose.keypoints;
+        const xs = kp.map(k => k.position.x);
+        const ys = kp.map(k => k.position.y);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+        const w = (maxX - minX) || 1;
+        const h = (maxY - minY) || 1;
+        const vec = [];
+        for (const k of kp) {
+            vec.push((k.position.x - minX) / w);
+            vec.push((k.position.y - minY) / h);
+        }
+        return vec; // 34 dims (17 keypoints × 2)
     }
 
     // ── Camera (hidden video element) ─────────────────────────────────────────
@@ -148,15 +181,28 @@ class Scratch3TeachableMachine {
         clearInterval(this._predictTimer);
         this._confidenceBuffer = [];
         this._predictTimer = setInterval(async () => {
-            if (!this._cameraOn || !this._classifier || !this._mobilenet) return;
+            if (!this._cameraOn || !this._classifier) return;
+            const extractor = this._modelType === 'pose' ? this._posenet : this._mobilenet;
+            if (!extractor) return;
             if (!this._videoEl || this._videoEl.readyState < 2) return;
             if (this._isPredicting) return;
             if (this._classifier.getNumClasses() < 2) return;
 
             this._isPredicting = true;
             try {
-                const features = this._mobilenet.infer(this._videoEl, true);
+                let features;
+                if (this._modelType === 'pose') {
+                    const pose = await this._posenet.estimateSinglePose(
+                        this._videoEl, {flipHorizontal: false}
+                    );
+                    const vec = this._poseToVector(pose);
+                    if (!vec) { this._isPredicting = false; return; }
+                    features = window.tf.tensor1d(vec);
+                } else {
+                    features = this._mobilenet.infer(this._videoEl, true);
+                }
                 const result = await this._classifier.predictClass(features, this._knnK);
+                features.dispose();
 
                 // ── Suavizado temporal: promediar las últimas N predicciones ──
                 this._confidenceBuffer.push(result.confidences);
@@ -210,14 +256,16 @@ class Scratch3TeachableMachine {
         const name = String(args.MODEL_NAME || '').trim();
         if (!name) return;
 
-        await this._loadLibrary();
-
         const models = this._getStoredModels();
         const model = models[name];
         if (!model) {
             console.warn(`[TM] Modelo "${name}" no encontrado en ML Studio`);
             return;
         }
+
+        // Detectar tipo (image/pose) y cargar la librería correcta
+        this._modelType = model.type || 'image';
+        await this._loadLibrary(this._modelType);
 
         // Reconstruir KNN classifier desde el dataset guardado
         this._classifier = window.knnClassifier.create();
