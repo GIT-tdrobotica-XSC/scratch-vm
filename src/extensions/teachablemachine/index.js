@@ -45,7 +45,7 @@ class Scratch3TeachableMachine {
         this._allConfidences = {}; // { className: probability }
 
         // Precisión: suavizado temporal y parámetro k del KNN
-        this._smoothingWindow = 8;      // frames a promediar
+        this._smoothingWindow = 10;     // frames a promediar
         this._confidenceBuffer = [];    // historial de vectores de confianza por índice
         this._knnK = 3;                 // se ajusta al cargar el modelo según nº de muestras
         this._classifyInterval = PREDICT_INTERVAL;
@@ -352,7 +352,7 @@ class Scratch3TeachableMachine {
             this._stopAudio();
             this._audioRecognizer = this._baseRecognizer.createTransfer(name);
             this._audioRecognizer.loadExamples(this._base64ToAb(model.audioData));
-            await this._audioRecognizer.train({epochs: 30});
+            await this._audioRecognizer.train({epochs: 50});
             this._startAudioListen();
             console.log(`[TM] Modelo de audio "${name}" cargado. Clases:`, this._classLabels);
         } catch (e) {
@@ -386,13 +386,14 @@ class Scratch3TeachableMachine {
                 this._topProbability = topProb;
             },
             {
-                probabilityThreshold: 0.6,
+                probabilityThreshold: 0.7,
                 overlapFactor: 0.5,
                 includeSpectrogram: false,
                 invokeCallbackOnNoiseAndUnknown: true
             }
         );
         this._audioListening = true;
+        if (this.runtime) this.runtime.emit('TM_AUDIO_STARTED');
     }
 
     _stopAudio () {
@@ -400,6 +401,7 @@ class Scratch3TeachableMachine {
             try { this._audioRecognizer.stopListening(); } catch (e) { /* noop */ }
         }
         this._audioListening = false;
+        if (this.runtime) this.runtime.emit('TM_AUDIO_STOPPED');
     }
 
     _base64ToAb (b64) {
@@ -490,6 +492,15 @@ class Scratch3TeachableMachine {
         if (this._predictTimer) this._startPredictLoop();
     }
 
+    // Encender/apagar el reconocimiento de audio (modelos de tipo audio)
+    setMic (args) {
+        if (args.STATE === 'off') {
+            this._stopAudio();
+            return;
+        }
+        this._startAudioListen();
+    }
+
     // ── getInfo ───────────────────────────────────────────────────────────────
 
     getInfo () {
@@ -505,7 +516,7 @@ class Scratch3TeachableMachine {
                 {
                     func: 'OPEN_ML_STUDIO',
                     blockType: BlockType.BUTTON,
-                    text: '🤖 Abrir ML Studio'
+                    text: 'Abrir ML Studio'
                 },
                 '---',
                 {
@@ -523,11 +534,23 @@ class Scratch3TeachableMachine {
                 {
                     opcode: 'setVideo',
                     blockType: BlockType.COMMAND,
-                    text: 'video [STATE]',
+                    text: 'cámara [STATE]',
                     arguments: {
                         STATE: {
                             type: ArgumentType.STRING,
                             menu: 'videoStates',
+                            defaultValue: 'on'
+                        }
+                    }
+                },
+                {
+                    opcode: 'setMic',
+                    blockType: BlockType.COMMAND,
+                    text: 'micrófono [STATE]',
+                    arguments: {
+                        STATE: {
+                            type: ArgumentType.STRING,
+                            menu: 'micStates',
                             defaultValue: 'on'
                         }
                     }
@@ -625,6 +648,13 @@ class Scratch3TeachableMachine {
                         {text: 'apagar', value: 'off'},
                         {text: 'voltear (espejo)', value: 'flipped'},
                         {text: 'sin voltear', value: 'noflip'}
+                    ]
+                },
+                micStates: {
+                    acceptReporters: false,
+                    items: [
+                        {text: 'encender', value: 'on'},
+                        {text: 'apagar', value: 'off'}
                     ]
                 },
                 classes: {
