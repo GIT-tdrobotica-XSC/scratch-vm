@@ -9,6 +9,7 @@ const TFJS_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.m
 const MOBILENET_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js';
 const KNN_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/knn-classifier@1.2.4/dist/knn-classifier.min.js';
 const POSENET_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet@2.2.2/dist/posenet.min.js';
+const SPEECH_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.5.4/dist/speech-commands.min.js';
 const PREDICT_INTERVAL = 200;
 const POSE_MIN_SCORE = 0.2;
 
@@ -26,11 +27,17 @@ class Scratch3TeachableMachine {
         this._classifier = null;
         this._mobilenet = null;
         this._posenet = null;
-        this._modelType = 'image'; // 'image' | 'pose'
+        this._modelType = 'image'; // 'image' | 'pose' | 'audio'
         this._lastPoseVec = null;  // último vector de keypoints (modo pose)
         this._modelName = null;
         this._classMap = {}; // { '0': 'Mano abierta', '1': 'Puño', ... }
         this._classLabels = []; // nombres en orden
+
+        // Audio (speech-commands)
+        this._baseRecognizer = null;
+        this._audioRecognizer = null;
+        this._audioListening = false;
+        this._audioLabelToName = {};
 
         // Predicciones
         this._topClass = '';
@@ -88,12 +95,22 @@ class Scratch3TeachableMachine {
     }
 
     // Carga las librerías necesarias según el tipo de modelo.
-    // image → MobileNet · pose → PoseNet. KNN y TF.js siempre.
+    // image → MobileNet · pose → PoseNet · audio → SpeechCommands. TF.js siempre.
     async _loadLibrary (type) {
-        const needsPose = type === 'pose';
         await this._injectScript(TFJS_URL);
+
+        if (type === 'audio') {
+            await this._injectScript(SPEECH_URL);
+            if (!this._baseRecognizer) {
+                this._baseRecognizer = window.speechCommands.create('BROWSER_FFT');
+                await this._baseRecognizer.ensureModelLoaded();
+            }
+            this._libReady = true;
+            return;
+        }
+
         await this._injectScript(KNN_URL);
-        if (needsPose) {
+        if (type === 'pose') {
             await this._injectScript(POSENET_URL);
             if (!this._posenet) {
                 this._posenet = await window.posenet.load({
@@ -263,9 +280,14 @@ class Scratch3TeachableMachine {
             return;
         }
 
-        // Detectar tipo (image/pose) y cargar la librería correcta
+        // Detectar tipo (image/pose/audio) y cargar la librería correcta
         this._modelType = model.type || 'image';
         await this._loadLibrary(this._modelType);
+
+        // Audio usa speech-commands (transfer learning), no KNN
+        if (this._modelType === 'audio') {
+            return this._loadAudioModel(model, name);
+        }
 
         // Reconstruir KNN classifier desde el dataset guardado
         this._classifier = window.knnClassifier.create();
@@ -305,6 +327,86 @@ class Scratch3TeachableMachine {
         // Encender cámara automáticamente
         await this._enableCamera();
         this._startPredictLoop();
+    }
+
+    // ── Audio model (speech-commands) ───────────────────────────────────────────
+
+    async _loadAudioModel (model, name) {
+        // Mapear índices/labels → nombres de clase
+        this._classMap = {};
+        this._classLabels = [];
+        this._audioLabelToName = {};
+        for (const cls of model.classes) {
+            this._classMap[cls.index] = cls.name;
+            this._classLabels.push(cls.name);
+            const label = cls.label || (cls.isNoise ? '_background_noise_' : cls.name);
+            this._audioLabelToName[label] = cls.name;
+        }
+
+        this._modelName = name;
+        this._topClass = '';
+        this._topProbability = 0;
+        this._allConfidences = {};
+
+        try {
+            this._stopAudio();
+            this._audioRecognizer = this._baseRecognizer.createTransfer(name);
+            this._audioRecognizer.loadExamples(this._base64ToAb(model.audioData));
+            await this._audioRecognizer.train({epochs: 30});
+            this._startAudioListen();
+            console.log(`[TM] Modelo de audio "${name}" cargado. Clases:`, this._classLabels);
+        } catch (e) {
+            console.error('[TM] Error cargando modelo de audio:', e);
+        }
+
+        if (this.runtime && this.runtime.requestToolboxExtensionsUpdate) {
+            this.runtime.requestToolboxExtensionsUpdate();
+        }
+    }
+
+    _startAudioListen () {
+        if (!this._audioRecognizer || this._audioListening) return;
+        const labels = this._audioRecognizer.wordLabels();
+        this._audioRecognizer.listen(
+            result => {
+                const scores = result.scores;
+                const named = {};
+                let topName = '';
+                let topProb = -1;
+                labels.forEach((label, i) => {
+                    const name = this._audioLabelToName[label] || label;
+                    named[name] = scores[i];
+                    if (scores[i] > topProb) {
+                        topProb = scores[i];
+                        topName = name;
+                    }
+                });
+                this._allConfidences = named;
+                this._topClass = topName;
+                this._topProbability = topProb;
+            },
+            {
+                probabilityThreshold: 0.6,
+                overlapFactor: 0.5,
+                includeSpectrogram: false,
+                invokeCallbackOnNoiseAndUnknown: true
+            }
+        );
+        this._audioListening = true;
+    }
+
+    _stopAudio () {
+        if (this._audioRecognizer && this._audioListening) {
+            try { this._audioRecognizer.stopListening(); } catch (e) { /* noop */ }
+        }
+        this._audioListening = false;
+    }
+
+    _base64ToAb (b64) {
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return bytes.buffer;
     }
 
     // ── Dynamic menus ─────────────────────────────────────────────────────────
