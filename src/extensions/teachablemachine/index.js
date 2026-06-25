@@ -100,6 +100,12 @@ class Scratch3TeachableMachine {
         await this._injectScript(TFJS_URL);
 
         if (type === 'audio') {
+            // speech-commands es inestable en WebGL (falla al compilar shaders);
+            // el backend CPU corre bien el modelo de audio (es ligero).
+            try {
+                await window.tf.setBackend('cpu');
+                await window.tf.ready();
+            } catch (e) { /* seguir con el backend por defecto */ }
             await this._injectScript(SPEECH_URL);
             if (!this._baseRecognizer) {
                 this._baseRecognizer = window.speechCommands.create('BROWSER_FFT');
@@ -108,6 +114,12 @@ class Scratch3TeachableMachine {
             this._libReady = true;
             return;
         }
+
+        // Imagen/pose usan WebGL (rápido para MobileNet/MoveNet)
+        try {
+            await window.tf.setBackend('webgl');
+            await window.tf.ready();
+        } catch (e) { /* seguir con el backend por defecto */ }
 
         await this._injectScript(KNN_URL);
         if (type === 'pose') {
