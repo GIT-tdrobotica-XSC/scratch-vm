@@ -13,6 +13,21 @@ const MOBILENET_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet
 const KNN_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/knn-classifier@1.2.4/dist/knn-classifier.min.js';
 const POSENET_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet@2.2.2/dist/posenet.min.js';
 const SPEECH_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.2/dist/speech-commands.min.js';
+
+// speech-commands (BROWSER_FFT) espera audio a 44100 Hz; muchos sistemas usan 48000 →
+// el espectrograma se desalinea y baja la precisión. Forzamos el AudioContext a 44100.
+function forceAudioSampleRate () {
+    const Orig = window.AudioContext || window.webkitAudioContext;
+    if (!Orig || Orig.__pcPatched) return;
+    class PatchedAudioContext extends Orig {
+        constructor (opts) {
+            super(Object.assign({sampleRate: 44100}, opts || {}));
+        }
+    }
+    PatchedAudioContext.__pcPatched = true;
+    window.AudioContext = PatchedAudioContext;
+    if (window.webkitAudioContext) window.webkitAudioContext = PatchedAudioContext;
+}
 const PREDICT_INTERVAL = 200;
 const POSE_MIN_SCORE = 0.2;
 
@@ -106,6 +121,7 @@ class Scratch3TeachableMachine {
         await this._injectScript(TFJS_URL); // tfjs 1.5.2 para TODO
 
         if (type === 'audio') {
+            forceAudioSampleRate(); // 44100 Hz (evita el mismatch que daña la precisión)
             await this._injectScript(SPEECH_URL);
             if (!this._baseRecognizer) {
                 this._baseRecognizer = window.speechCommands.create('BROWSER_FFT');
