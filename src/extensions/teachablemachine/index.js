@@ -119,6 +119,7 @@ class Scratch3TeachableMachine {
     // image → MobileNet · pose → PoseNet · audio → SpeechCommands. TF.js siempre.
     async _loadLibrary (type) {
         await this._injectScript(TFJS_URL); // tfjs 1.5.2 para TODO
+        console.log(`[TM] tfjs ${window.tf && window.tf.version_core ? window.tf.version_core : '?'} listo`);
 
         if (type === 'audio') {
             forceAudioSampleRate(); // 44100 Hz (evita el mismatch que daña la precisión)
@@ -127,6 +128,7 @@ class Scratch3TeachableMachine {
                 this._baseRecognizer = window.speechCommands.create('BROWSER_FFT');
                 await this._baseRecognizer.ensureModelLoaded();
             }
+            console.log('[TM] speech-commands listo');
             this._libReady = true;
             return;
         }
@@ -221,6 +223,7 @@ class Scratch3TeachableMachine {
 
     _startPredictLoop () {
         clearInterval(this._predictTimer);
+        this._predictLoggedErr = false;
         this._confidenceBuffer = [];
         this._predictTimer = setInterval(async () => {
             if (!this._cameraOn || !this._classifier) return;
@@ -277,7 +280,12 @@ class Scratch3TeachableMachine {
                     named[name] = smoothed[k];
                 }
                 this._allConfidences = named;
-            } catch (e) { /* ignore */ }
+            } catch (e) {
+                if (!this._predictLoggedErr) {
+                    console.error('[TM] Error en predicción (imagen/pose):', e);
+                    this._predictLoggedErr = true;
+                }
+            }
             this._isPredicting = false;
         }, this._classifyInterval);
     }
@@ -312,6 +320,7 @@ class Scratch3TeachableMachine {
 
         // Detectar tipo (image/pose/audio) y cargar la librería correcta
         this._modelType = model.type || 'image';
+        console.log(`[TM] loadModel "${name}" (tipo: ${this._modelType})`);
         await this._loadLibrary(this._modelType);
 
         // Audio usa speech-commands (transfer learning), no KNN
@@ -418,8 +427,11 @@ class Scratch3TeachableMachine {
             if (this._audioRecognizer.isListening && this._audioRecognizer.isListening()) {
                 await this._audioRecognizer.stopListening();
             }
-        } catch (e) { /* noop */ }
+        } catch (e) {
+            console.warn('[TM] stopListening previo:', e);
+        }
         const labels = this._audioRecognizer.wordLabels();
+        console.log('[TM] Escuchando audio. wordLabels:', labels);
         this._audioRecognizer.listen(
             result => {
                 const scores = result.scores;
@@ -451,7 +463,9 @@ class Scratch3TeachableMachine {
 
     _stopAudio () {
         if (this._audioRecognizer && this._audioListening) {
-            try { this._audioRecognizer.stopListening(); } catch (e) { /* noop */ }
+            try { this._audioRecognizer.stopListening(); } catch (e) {
+                console.warn('[TM] stopListening:', e);
+            }
         }
         this._audioListening = false;
         if (this.runtime) this.runtime.emit('TM_AUDIO_STOPPED');
