@@ -372,20 +372,16 @@ class Scratch3TeachableMachine {
 
         try {
             this._stopAudio();
-            this._audioRecognizer = this._baseRecognizer.createTransfer(name);
 
-            // Cargar el modelo YA ENTRENADO desde IndexedDB (rápido, sin re-entrenar).
-            // Fallback a reconstruir desde los ejemplos para modelos viejos.
-            let loaded = false;
-            if (model.idbUrl) {
-                try {
-                    await this._audioRecognizer.load(model.idbUrl);
-                    loaded = true;
-                } catch (e) {
-                    console.warn('[TM] modelo entrenado no disponible, reentrenando:', e);
-                }
-            }
-            if (!loaded) {
+            // Usar el recognizer YA ENTRENADO compartido en memoria (carga instantánea,
+            // sin re-entrenar). Fallback: reconstruir desde los ejemplos serializados.
+            const shared = window.playcodeAudioModels && window.playcodeAudioModels[name];
+            let fromMemory = false;
+            if (shared) {
+                this._audioRecognizer = shared;
+                fromMemory = true;
+            } else {
+                this._audioRecognizer = this._baseRecognizer.createTransfer(name);
                 this._audioRecognizer.loadExamples(this._base64ToAb(model.audioData));
                 await this._audioRecognizer.train({
                     epochs: 40,
@@ -396,7 +392,7 @@ class Scratch3TeachableMachine {
 
             this._startAudioListen();
             this._loadedOk = true;
-            console.log(`[TM] Modelo de audio "${name}" cargado (${loaded ? 'desde modelo entrenado' : 'reentrenado'}). Clases:`, this._classLabels);
+            console.log(`[TM] Modelo de audio "${name}" cargado (${fromMemory ? 'memoria' : 'reentrenado'}). Clases:`, this._classLabels);
         } catch (e) {
             console.error('[TM] Error cargando modelo de audio:', e);
         }
@@ -406,8 +402,14 @@ class Scratch3TeachableMachine {
         }
     }
 
-    _startAudioListen () {
+    async _startAudioListen () {
         if (!this._audioRecognizer || this._audioListening) return;
+        // El recognizer compartido pudo quedar escuchando desde el ML Studio: liberarlo
+        try {
+            if (this._audioRecognizer.isListening && this._audioRecognizer.isListening()) {
+                await this._audioRecognizer.stopListening();
+            }
+        } catch (e) { /* noop */ }
         const labels = this._audioRecognizer.wordLabels();
         this._audioRecognizer.listen(
             result => {
