@@ -5,14 +5,13 @@ const blockIconURI = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53
 const menuIconURI = blockIconURI;
 
 const STORAGE_KEY = 'playcode_ml_models';
-const TFJS_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js';
+// UNA sola versión de tfjs (1.5.2, stack de Google TM). Dos versiones de tfjs colisionan
+// en el engine global. speech-commands exige ^1.5.2; mobilenet/knn/posenet 1.x también
+// funcionan con 1.5.2. (Pose usa PoseNet, no MoveNet, que requiere tfjs 3.x.)
+const TFJS_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.5.2/dist/tf.min.js';
 const MOBILENET_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js';
 const KNN_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/knn-classifier@1.2.4/dist/knn-classifier.min.js';
-const POSE_DETECTION_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js';
-// Audio: tfjs 1.5.2 + speech-commands 0.4.2 (que requiere tfjs ^1.5.2; stack 1.x de
-// Google TM; evita el error de shader de speech-commands con tfjs 3.x). Coexiste con
-// tfjs 3.x vía this._tf.
-const TFJS_AUDIO_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.5.2/dist/tf.min.js';
+const POSENET_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet@2.2.2/dist/posenet.min.js';
 const SPEECH_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.2/dist/speech-commands.min.js';
 const PREDICT_INTERVAL = 200;
 const POSE_MIN_SCORE = 0.2;
@@ -29,9 +28,8 @@ class Scratch3TeachableMachine {
 
         // Modelo KNN
         this._classifier = null;
-        this._tf = null;       // referencia a tfjs 3.x (imagen/pose)
         this._mobilenet = null;
-        this._detector = null; // MoveNet (pose-detection)
+        this._posenet = null;  // PoseNet (tfjs 1.x)
         this._modelType = 'image'; // 'image' | 'pose' | 'audio'
         this._lastPoseVec = null;  // último vector de keypoints (modo pose)
         this._modelName = null;
@@ -105,10 +103,9 @@ class Scratch3TeachableMachine {
     // Carga las librerías necesarias según el tipo de modelo.
     // image → MobileNet · pose → PoseNet · audio → SpeechCommands. TF.js siempre.
     async _loadLibrary (type) {
+        await this._injectScript(TFJS_URL); // tfjs 1.5.2 para TODO
+
         if (type === 'audio') {
-            // Stack de Google TM: tfjs 1.3.1 + speech-commands 0.4.0 (sin shader error)
-            await this._injectScript(TFJS_AUDIO_URL);
-            window.__tmTf1 = window.__tmTf1 || window.tf;
             await this._injectScript(SPEECH_URL);
             if (!this._baseRecognizer) {
                 this._baseRecognizer = window.speechCommands.create('BROWSER_FFT');
@@ -118,20 +115,16 @@ class Scratch3TeachableMachine {
             return;
         }
 
-        // Imagen/pose: tfjs 3.x (capturar la referencia estable)
-        await this._injectScript(TFJS_URL);
-        window.__tmTf3 = window.__tmTf3 || window.tf;
-        this._tf = window.__tmTf3;
-
         await this._injectScript(KNN_URL);
         if (type === 'pose') {
-            await this._injectScript(POSE_DETECTION_URL);
-            if (this._tf && this._tf.ready) await this._tf.ready();
-            if (!this._detector) {
-                this._detector = await window.poseDetection.createDetector(
-                    window.poseDetection.SupportedModels.MoveNet,
-                    {modelType: window.poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING}
-                );
+            await this._injectScript(POSENET_URL);
+            if (!this._posenet) {
+                this._posenet = await window.posenet.load({
+                    architecture: 'MobileNetV1',
+                    outputStride: 16,
+                    inputResolution: {width: 257, height: 257},
+                    multiplier: 0.75
+                });
             }
         } else {
             await this._injectScript(MOBILENET_URL);
@@ -145,14 +138,14 @@ class Scratch3TeachableMachine {
     // Convierte una pose de PoseNet en un vector normalizado (invariante a
     // traslación y escala). Debe coincidir con el de ML Studio para que los
     // modelos guardados sean compatibles.
-    // MoveNet: keypoints con {x, y, score, name}
+    // PoseNet: keypoints con {position:{x,y}, score, part}
     _poseToVector (pose) {
         if (!pose || !pose.keypoints) return null;
         const kp = pose.keypoints;
         const valid = kp.filter(k => (k.score || 0) >= POSE_MIN_SCORE);
         if (valid.length < 5) return null;
-        const xs = kp.map(k => k.x);
-        const ys = kp.map(k => k.y);
+        const xs = kp.map(k => k.position.x);
+        const ys = kp.map(k => k.position.y);
         const minX = Math.min(...xs);
         const maxX = Math.max(...xs);
         const minY = Math.min(...ys);
@@ -161,8 +154,8 @@ class Scratch3TeachableMachine {
         const h = (maxY - minY) || 1;
         const vec = [];
         for (const k of kp) {
-            vec.push((k.x - minX) / w);
-            vec.push((k.y - minY) / h);
+            vec.push((k.position.x - minX) / w);
+            vec.push((k.position.y - minY) / h);
         }
         return vec; // 34 dims (17 keypoints × 2)
     }
@@ -215,7 +208,7 @@ class Scratch3TeachableMachine {
         this._confidenceBuffer = [];
         this._predictTimer = setInterval(async () => {
             if (!this._cameraOn || !this._classifier) return;
-            const extractor = this._modelType === 'pose' ? this._detector : this._mobilenet;
+            const extractor = this._modelType === 'pose' ? this._posenet : this._mobilenet;
             if (!extractor) return;
             if (!this._videoEl || this._videoEl.readyState < 2) return;
             if (this._isPredicting) return;
@@ -225,12 +218,12 @@ class Scratch3TeachableMachine {
             try {
                 let features;
                 if (this._modelType === 'pose') {
-                    const poses = await this._detector.estimatePoses(
+                    const pose = await this._posenet.estimateSinglePose(
                         this._videoEl, {flipHorizontal: false}
                     );
-                    const vec = this._poseToVector(poses && poses[0]);
+                    const vec = this._poseToVector(pose);
                     if (!vec) { this._isPredicting = false; return; }
-                    features = this._tf.tensor1d(vec);
+                    features = window.tf.tensor1d(vec);
                 } else {
                     features = this._mobilenet.infer(this._videoEl, true);
                 }
@@ -316,7 +309,7 @@ class Scratch3TeachableMachine {
         let minSamples = Infinity;
         for (const label in model.dataset) {
             const {data, shape} = model.dataset[label];
-            dataset[label] = this._tf.tensor2d(data, shape);
+            dataset[label] = window.tf.tensor2d(data, shape);
             minSamples = Math.min(minSamples, shape[0]);
         }
         this._classifier.setClassifierDataset(dataset);
