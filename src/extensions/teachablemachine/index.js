@@ -35,6 +35,7 @@ class Scratch3TeachableMachine {
         this._modelType = 'image'; // 'image' | 'pose' | 'audio'
         this._lastPoseVec = null;  // último vector de keypoints (modo pose)
         this._modelName = null;
+        this._loadedOk = false; // true cuando un modelo terminó de cargar (para caché)
         this._classMap = {}; // { '0': 'Mano abierta', '1': 'Puño', ... }
         this._classLabels = []; // nombres en orden
 
@@ -65,6 +66,8 @@ class Scratch3TeachableMachine {
 
         // Escuchar modelos actualizados desde ML Studio
         runtime.on('ML_MODELS_UPDATED', () => {
+            // Invalidar el caché: un modelo pudo re-guardarse con el mismo nombre
+            this._loadedOk = false;
             if (runtime.requestToolboxExtensionsUpdate) {
                 runtime.requestToolboxExtensionsUpdate();
             }
@@ -286,6 +289,11 @@ class Scratch3TeachableMachine {
         const name = String(args.MODEL_NAME || '').trim();
         if (!name) return;
 
+        // Caché: si ya está cargado este mismo modelo, no recargar (evita que la
+        // bandera verde se quede pegada al hacer click varias veces).
+        if (this._modelName === name && this._loadedOk) return;
+        this._loadedOk = false;
+
         const models = this._getStoredModels();
         const model = models[name];
         if (!model) {
@@ -340,6 +348,7 @@ class Scratch3TeachableMachine {
         // Encender cámara automáticamente
         await this._enableCamera();
         this._startPredictLoop();
+        this._loadedOk = true;
     }
 
     // ── Audio model (speech-commands) ───────────────────────────────────────────
@@ -364,15 +373,30 @@ class Scratch3TeachableMachine {
         try {
             this._stopAudio();
             this._audioRecognizer = this._baseRecognizer.createTransfer(name);
-            this._audioRecognizer.loadExamples(this._base64ToAb(model.audioData));
-            // Mismos parámetros que el ML Studio: aumento con ruido + fine-tuning
-            await this._audioRecognizer.train({
-                epochs: 40,
-                fineTuningEpochs: 8,
-                augmentByMixingNoiseRatio: 0.5
-            });
+
+            // Cargar el modelo YA ENTRENADO desde IndexedDB (rápido, sin re-entrenar).
+            // Fallback a reconstruir desde los ejemplos para modelos viejos.
+            let loaded = false;
+            if (model.idbUrl) {
+                try {
+                    await this._audioRecognizer.load(model.idbUrl);
+                    loaded = true;
+                } catch (e) {
+                    console.warn('[TM] modelo entrenado no disponible, reentrenando:', e);
+                }
+            }
+            if (!loaded) {
+                this._audioRecognizer.loadExamples(this._base64ToAb(model.audioData));
+                await this._audioRecognizer.train({
+                    epochs: 40,
+                    fineTuningEpochs: 8,
+                    augmentByMixingNoiseRatio: 0.5
+                });
+            }
+
             this._startAudioListen();
-            console.log(`[TM] Modelo de audio "${name}" cargado. Clases:`, this._classLabels);
+            this._loadedOk = true;
+            console.log(`[TM] Modelo de audio "${name}" cargado (${loaded ? 'desde modelo entrenado' : 'reentrenado'}). Clases:`, this._classLabels);
         } catch (e) {
             console.error('[TM] Error cargando modelo de audio:', e);
         }
