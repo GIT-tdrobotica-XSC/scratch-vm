@@ -365,7 +365,12 @@ class Scratch3TeachableMachine {
             this._stopAudio();
             this._audioRecognizer = this._baseRecognizer.createTransfer(name);
             this._audioRecognizer.loadExamples(this._base64ToAb(model.audioData));
-            await this._audioRecognizer.train({epochs: 50});
+            // Mismos parámetros que el ML Studio: aumento con ruido + fine-tuning
+            await this._audioRecognizer.train({
+                epochs: 40,
+                fineTuningEpochs: 8,
+                augmentByMixingNoiseRatio: 0.5
+            });
             this._startAudioListen();
             console.log(`[TM] Modelo de audio "${name}" cargado. Clases:`, this._classLabels);
         } catch (e) {
@@ -399,7 +404,7 @@ class Scratch3TeachableMachine {
                 this._topProbability = topProb;
             },
             {
-                probabilityThreshold: 0.7,
+                probabilityThreshold: 0.5,
                 overlapFactor: 0.5,
                 includeSpectrogram: false,
                 invokeCallbackOnNoiseAndUnknown: true
