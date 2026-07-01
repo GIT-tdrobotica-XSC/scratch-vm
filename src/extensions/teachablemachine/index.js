@@ -30,6 +30,13 @@ function forceAudioSampleRate () {
 }
 const PREDICT_INTERVAL = 200;
 const POSE_MIN_SCORE = 0.2;
+// Como invokeCallbackOnNoiseAndUnknown=true hace que speech-commands invoque el
+// callback SIEMPRE (ignora su propio probabilityThreshold), aplicamos nuestro
+// propio umbral + suavizado sobre los scores promediados (igual que Google TM).
+const AUDIO_THRESHOLD = 0.75;
+// 2 (no más): con 4 lecturas, un pico real de ~95% se diluía con las lecturas vecinas
+// más bajas de un sonido breve (aplausos, palabras cortas) y nunca cruzaba el umbral.
+const AUDIO_SMOOTH_WINDOW = 2;
 
 class Scratch3TeachableMachine {
     constructor (runtime) {
@@ -86,6 +93,11 @@ class Scratch3TeachableMachine {
             }
         });
 
+        // La GUI envía estos eventos cuando el usuario cierra el widget (botón ×).
+        // Detenemos la inferencia del VM para que quede consistente con la UI.
+        runtime.on('TM_CLOSE_CAMERA', () => this._disableCamera());
+        runtime.on('TM_CLOSE_AUDIO', () => this._stopAudio());
+
         if (runtime) {
             runtime.on('PROJECT_STOP_ALL', () => {
                 this._topClass = '';
@@ -98,21 +110,29 @@ class Scratch3TeachableMachine {
     // ── CDN loader ────────────────────────────────────────────────────────────
 
     _injectScript (src) {
-        return new Promise((resolve, reject) => {
+        // Cache de promesas en window: el panel ML Studio (ml-studio.jsx) carga los
+        // MISMOS CDN (tfjs, speech-commands, etc.) por su cuenta. Antes cada lado hacía
+        // su propio querySelector + addEventListener('load', ...) sobre el <script> del
+        // otro: si el load ya había disparado entre el check y el addEventListener, ese
+        // listener nunca se ejecutaba y la promesa quedaba colgada para siempre (eso
+        // traba "cargar modelo", que es async, y con él la bandera verde). Una única
+        // promesa compartida por URL evita esa carrera.
+        if (!window.__pcScriptPromises) window.__pcScriptPromises = {};
+        if (window.__pcScriptPromises[src]) return window.__pcScriptPromises[src];
+        const p = new Promise((resolve, reject) => {
             const existing = document.querySelector(`script[src="${src}"]`);
             if (existing && existing.getAttribute('data-loaded') === 'true') return resolve();
-            if (existing) {
-                existing.addEventListener('load', resolve);
-                existing.addEventListener('error', reject);
-                return;
+            const s = existing || document.createElement('script');
+            if (!existing) {
+                s.src = src;
+                s.async = true;
+                document.head.appendChild(s);
             }
-            const s = document.createElement('script');
-            s.src = src;
-            s.async = true;
-            s.onload = () => { s.setAttribute('data-loaded', 'true'); resolve(); };
-            s.onerror = () => reject(new Error(`No se pudo cargar ${src}`));
-            document.head.appendChild(s);
+            s.addEventListener('load', () => { s.setAttribute('data-loaded', 'true'); resolve(); });
+            s.addEventListener('error', () => reject(new Error(`No se pudo cargar ${src}`)));
         });
+        window.__pcScriptPromises[src] = p;
+        return p;
     }
 
     // Carga las librerías necesarias según el tipo de modelo.
@@ -237,6 +257,16 @@ class Scratch3TeachableMachine {
             try {
                 let features;
                 if (this._modelType === 'pose') {
+                    // PoseNet rescala coordenadas usando los atributos HTML width/height
+                    // (no videoWidth/videoHeight). El video oculto no tiene esos atributos
+                    // puestos → todos los keypoints salen en (0,0) → vector todo ceros
+                    // → KNN nunca detecta ninguna clase. Mismo fix que en ml-studio.jsx.
+                    if (this._videoEl.width !== this._videoEl.videoWidth) {
+                        this._videoEl.width = this._videoEl.videoWidth;
+                    }
+                    if (this._videoEl.height !== this._videoEl.videoHeight) {
+                        this._videoEl.height = this._videoEl.videoHeight;
+                    }
                     const pose = await this._posenet.estimateSinglePose(
                         this._videoEl, {flipHorizontal: false}
                     );
@@ -318,8 +348,15 @@ class Scratch3TeachableMachine {
             return;
         }
 
+        // Limpiar modelo anterior antes de cambiar de tipo para evitar
+        // que cámara y audio se solapen durante la transición.
+        const prevType = this._modelType;
+        const newType = model.type || 'image';
+        if (prevType === 'audio') this._stopAudio();          // audio → cualquier tipo
+        if (newType === 'audio' && this._cameraOn) this._disableCamera(); // visual → audio
+
         // Detectar tipo (image/pose/audio) y cargar la librería correcta
-        this._modelType = model.type || 'image';
+        this._modelType = newType;
         console.log(`[TM] loadModel "${name}" (tipo: ${this._modelType})`);
         await this._loadLibrary(this._modelType);
 
@@ -432,27 +469,52 @@ class Scratch3TeachableMachine {
         }
         const labels = this._audioRecognizer.wordLabels();
         console.log('[TM] Escuchando audio. wordLabels:', labels);
+        this._audioConfBuffer = [];
         this._audioRecognizer.listen(
             result => {
                 const scores = result.scores;
+
+                // Suavizado temporal: promediar las últimas N lecturas (igual que
+                // imagen/pose) para que un pico de ruido no dispare una clase.
+                this._audioConfBuffer.push(scores);
+                if (this._audioConfBuffer.length > AUDIO_SMOOTH_WINDOW) this._audioConfBuffer.shift();
+                const avg = new Array(scores.length).fill(0);
+                for (const s of this._audioConfBuffer) {
+                    for (let i = 0; i < s.length; i++) avg[i] += s[i];
+                }
+                for (let i = 0; i < avg.length; i++) avg[i] /= this._audioConfBuffer.length;
+
                 const named = {};
                 let topName = '';
                 let topProb = -1;
                 labels.forEach((label, i) => {
                     const name = this._audioLabelToName[label] || label;
-                    named[name] = scores[i];
-                    if (scores[i] > topProb) {
-                        topProb = scores[i];
+                    named[name] = avg[i];
+                    if (avg[i] > topProb) {
+                        topProb = avg[i];
                         topName = name;
                     }
                 });
                 this._allConfidences = named;
-                this._topClass = topName;
+                // Solo reporta una clase "ganadora" si supera el umbral propio;
+                // si no, no hay detección clara (evita falsos positivos entre clases).
+                this._topClass = topProb >= AUDIO_THRESHOLD ? topName : '';
                 this._topProbability = topProb;
+
+                // Log de diagnóstico (1 de cada 5 lecturas, ~cada 1s) para ver si el
+                // modelo realmente cruza AUDIO_THRESHOLD durante el uso real.
+                this._audioLogCounter = (this._audioLogCounter || 0) + 1;
+                if (this._audioLogCounter % 5 === 0) {
+                    const fmt = Object.entries(named).map(([n, p]) => `${n}: ${(p * 100).toFixed(0)}%`).join(' | ');
+                    console.log(`[TM] audio live → ${fmt} ${topProb >= AUDIO_THRESHOLD ? `→ GANA "${topName}"` : '(bajo umbral, sin detección)'}`);
+                }
             },
             {
-                probabilityThreshold: 0.5,
-                overlapFactor: 0.5,
+                probabilityThreshold: AUDIO_THRESHOLD,
+                // 0.35 (no 0.5): cada ventana de análisis corre inferencia WebGL, que
+                // compite por GPU con el render del stage de Scratch. Menos ventanas/seg
+                // = menos contención = menos tartamudeo, sin perder calidad de detección.
+                overlapFactor: 0.35,
                 includeSpectrogram: false,
                 invokeCallbackOnNoiseAndUnknown: true
             }
@@ -505,20 +567,28 @@ class Scratch3TeachableMachine {
         this._disableCamera();
     }
 
+    // Para imagen/pose el modelo activo es _classifier (KNN); para audio es
+    // _audioRecognizer (speech-commands). Los bloques deben chequear el que
+    // corresponda según _modelType, no solo _classifier.
+    _hasActiveModel () {
+        if (this._modelType === 'audio') return !!this._audioRecognizer && this._loadedOk;
+        return this._classifier !== null;
+    }
+
     whenDetects (args) {
-        if (!this._classifier || !args.CLASS) return false;
+        if (!this._hasActiveModel() || !args.CLASS) return false;
         return this._topClass === args.CLASS;
     }
 
     whenDetectsConfidence (args) {
-        if (!this._classifier || !args.CLASS) return false;
+        if (!this._hasActiveModel() || !args.CLASS) return false;
         if (this._topClass !== args.CLASS) return false;
         const threshold = (Number(args.THRESHOLD) || 0) / 100;
         return this._topProbability >= threshold;
     }
 
     isClass (args) {
-        if (!this._classifier || !args.CLASS) return false;
+        if (!this._hasActiveModel() || !args.CLASS) return false;
         return this._topClass === args.CLASS;
     }
 
@@ -536,7 +606,7 @@ class Scratch3TeachableMachine {
     }
 
     isModelReady () {
-        return this._classifier !== null;
+        return this._hasActiveModel();
     }
 
     setVideo (args) {
@@ -637,6 +707,10 @@ class Scratch3TeachableMachine {
                 {
                     opcode: 'whenDetects',
                     blockType: BlockType.HAT,
+                    // isEdgeActivated: solo dispara en el flanco falso→verdadero.
+                    // Sin esto Scratch re-lanza el script cada frame que la clase
+                    // siga detectada, acumulando instancias y dejando la bandera pegada.
+                    isEdgeActivated: true,
                     text: 'cuando detecte [CLASS]',
                     arguments: {
                         CLASS: {
@@ -649,6 +723,7 @@ class Scratch3TeachableMachine {
                 {
                     opcode: 'whenDetectsConfidence',
                     blockType: BlockType.HAT,
+                    isEdgeActivated: true,
                     text: 'cuando detecte [CLASS] con confianza > [THRESHOLD] %',
                     arguments: {
                         CLASS: {
