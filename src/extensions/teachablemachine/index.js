@@ -4,7 +4,6 @@ const BlockType = require('../../extension-support/block-type');
 const blockIconURI = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgdmlld0JveD0iMCAwIDQwIDQwIj48cmVjdCB4PSI2IiB5PSIxMCIgd2lkdGg9IjI4IiBoZWlnaHQ9IjIwIiByeD0iMyIgZmlsbD0iI2ZmZiIgc3Ryb2tlPSIjMDA5Njg4IiBzdHJva2Utd2lkdGg9IjIiLz48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSI1IiBmaWxsPSIjMDA5Njg4Ii8+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMiIgZmlsbD0iI2ZmZiIvPjxyZWN0IHg9IjE1IiB5PSI2IiB3aWR0aD0iMTAiIGhlaWdodD0iNCIgcng9IjIiIGZpbGw9IiMwMDk2ODgiLz48L3N2Zz4=';
 const menuIconURI = blockIconURI;
 
-const STORAGE_KEY = 'playcode_ml_models';
 // UNA sola versión de tfjs (1.5.2, stack de Google TM). Dos versiones de tfjs colisionan
 // en el engine global. speech-commands exige ^1.5.2; mobilenet/knn/posenet 1.x también
 // funcionan con 1.5.2. (Pose usa PoseNet, no MoveNet, que requiere tfjs 3.x.)
@@ -37,6 +36,56 @@ const AUDIO_THRESHOLD = 0.75;
 // 2 (no más): con 4 lecturas, un pico real de ~95% se diluía con las lecturas vecinas
 // más bajas de un sonido breve (aplausos, palabras cortas) y nunca cruzaba el umbral.
 const AUDIO_SMOOTH_WINDOW = 2;
+
+// ── Persistencia (IndexedDB) ──────────────────────────────────────────────────
+// Los modelos ahora se guardan entre sesiones en IndexedDB (antes solo vivían en
+// window.playcodeMLModels, memoria de la sesión). Este helper está duplicado en
+// scratch-gui/ml-studio.jsx (paquetes separados, sin import cruzado); ambos leen
+// y escriben la misma DB del navegador. window.playcodeMLModels sigue siendo la
+// caché sincrónica que consume getModelsMenu (los menús de Scratch no pueden
+// esperar una promesa).
+const ML_DB_NAME = 'playcode-ml-studio';
+const ML_DB_STORE = 'models';
+
+function _openMlDb () {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(ML_DB_NAME, 1);
+        req.onupgradeneeded = () => {
+            if (!req.result.objectStoreNames.contains(ML_DB_STORE)) {
+                req.result.createObjectStore(ML_DB_STORE, {keyPath: 'name'});
+            }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function mlDbGetAll () {
+    const db = await _openMlDb();
+    return new Promise((resolve, reject) => {
+        const req = db.transaction(ML_DB_STORE, 'readonly').objectStore(ML_DB_STORE).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+// Une lo guardado en IndexedDB con lo que ya haya en memoria de esta sesión (lo
+// de memoria gana: puede reflejar guardados/borrados más recientes que todavía
+// no terminaron de escribirse en la DB).
+function hydrateMlModelsFromDb () {
+    if (window.__pcMlHydratePromise) return window.__pcMlHydratePromise;
+    window.__pcMlHydratePromise = (async () => {
+        try {
+            const rows = await mlDbGetAll();
+            const fromDb = {};
+            rows.forEach(m => { fromDb[m.name] = m; });
+            window.playcodeMLModels = Object.assign({}, fromDb, window.playcodeMLModels || {});
+        } catch (e) {
+            console.warn('[TM] No se pudo leer IndexedDB:', e);
+        }
+    })();
+    return window.__pcMlHydratePromise;
+}
 
 class Scratch3TeachableMachine {
     constructor (runtime) {
@@ -97,6 +146,15 @@ class Scratch3TeachableMachine {
         // Detenemos la inferencia del VM para que quede consistente con la UI.
         runtime.on('TM_CLOSE_CAMERA', () => this._disableCamera());
         runtime.on('TM_CLOSE_AUDIO', () => this._stopAudio());
+
+        // Modelos guardados en sesiones anteriores (IndexedDB): el bloque "cargar
+        // modelo" debe poder listarlos sin que el usuario tenga que abrir ML Studio
+        // primero en esta sesión.
+        hydrateMlModelsFromDb().then(() => {
+            if (runtime.requestToolboxExtensionsUpdate) {
+                runtime.requestToolboxExtensionsUpdate();
+            }
+        });
 
         if (runtime) {
             runtime.on('PROJECT_STOP_ALL', () => {
@@ -323,13 +381,7 @@ class Scratch3TeachableMachine {
     // ── Load saved model ──────────────────────────────────────────────────────
 
     _getStoredModels () {
-        try {
-            const w = window.playcodeMLModels;
-            if (w) return w;
-            return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-        } catch (e) {
-            return {};
-        }
+        return window.playcodeMLModels || {};
     }
 
     async loadModel (args) {
