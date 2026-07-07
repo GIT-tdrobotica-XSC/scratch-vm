@@ -9,9 +9,19 @@ replica intencionalmente para reutilizar el mismo enfoque probado.
 
 - **Web Serial API** desde el navegador (`navigator.serial`), `baudRate: 115200`, sin
   control de flujo adicional.
-- Reset al conectar: **ninguno**. El ESP32-S3 MINI expone USB-JTAG nativo (igual que
-  PlayMe), así que no se necesita el pulso DTR/RTS que sí requiere el ESP32
-  clásico+CH340 de PlayIoT.
+- **Corrección (confirmado con el esquemático playGo_V7.1):** a diferencia de lo que
+  se asumió al inicio, PlayGo **sí** tiene un puente **CH340K** (UART3) con un
+  circuito de auto-reset por DTR/RTS (transistores + flip-flop), igual que PlayIoT —
+  **no** es USB-JTAG nativo puro como PlayMe. El lado GUI ya trata a PlayGo como
+  PlayIoT para el flasheo (`bootloaderAddress = 0x1000`, reset por pulso DTR/RTS,
+  reconexión no-inmediata). Pendiente de confirmar en hardware real si el circuito de
+  auto-reset (con flip-flop, más elaborado que el de PlayIoT) permite saltarse el paso
+  manual de "mantén BOOT presionado" — por ahora se dejó igual de conservador que
+  PlayIoT hasta poder probarlo.
+- El esquemático también muestra un conector USB adicional ("USB MAIN", directo a los
+  pines USB nativos del ESP32-S3) aparte del puerto con CH340 ("USB HOST"). Falta
+  confirmar en la placa real cuál de los dos es el que efectivamente usa el navegador
+  para Web Serial.
 
 ## Framing
 
@@ -43,6 +53,7 @@ manda un solo subcomando por mensaje.
 | `turnAngle` | `moveId:Int`, `angleDeg:Number`, `speed:Number(-100..100)`, `wheelDiameterCm:Number`, `trackWidthCm:Number`, `pulsesPerRev:Int` | Gira el robot en su propio eje el ángulo indicado (positivo = sentido horario). Diferencial: cada rueda gira en sentido opuesto una distancia de arco `angleDeg/360 * π * trackWidthCm`. |
 | `turnWheelRevs` | `moveId:Int`, `wheel:'left'|'right'|'both'`, `revolutions:Number`, `speed:Number(-100..100)`, `pulsesPerRev:Int` | Gira la(s) rueda(s) indicada(s) el número de vueltas exacto (control directo por encoder, sin conversión a distancia). |
 | `resetEncoders` | — | Pone en 0 los contadores acumulados `encoderLeft`/`encoderRight` de la telemetría. |
+| `servoWrite` | `pin:Int(11,12,13,14)`, `angle:Int(0-180)` | Mueve el servo conectado en el puerto especial A/B/C/D (= GPIO 11/12/13/14 respectivamente, serigrafía de la placa). Mismo GPIO que `digitalWrite` de playBlocks/play+ — el firmware decide el modo según cuál de los dos comandos reciba para ese pin. |
 
 **Semántica de `moveId`/`moveDone`** (crítico): los tres comandos de movimiento
 (`moveDistance`, `turnAngle`, `turnWheelRevs`) son de **larga duración**. El lado
@@ -96,15 +107,19 @@ no binario). El micrófono solo reporta un nivel agregado (ver telemetría).
 
 ### Entradas/Salidas playBlocks y play+
 
-Los módulos playBlocks y play+ comparten los mismos 4 GPIO de entrada (1-4) y 4 GPIO
-de salida (11-14) — el conector/módulo físico cambia, no el pin.
+Los módulos playBlocks y play+ comparten los mismos 4 conectores de entrada (IO1-IO4,
+serigrafía "1","2","3","4") y 4 conectores de salida (IO11-IO14, serigrafía "A","B","C","D")
+— el conector/módulo físico cambia, no el pin.
 
 | Subcomando | Campos | Descripción |
 |---|---|---|
-| `digitalWrite` | `gpio:Int(11,12,13,14)`, `value:0|1` | Escribe una salida playBlocks/play+. |
+| `digitalWrite` | `gpio:Int(11,12,13,14)`, `value:0|1` | Escribe una salida playBlocks/play+ (IO11-IO14 / A-D). |
 
-Las entradas (GPIO 1-4) **no** tienen comando de escritura — se leen pasivamente vía
-telemetría (`inputs.gpio1..4`).
+Las entradas (IO1-IO4) **no** tienen comando de escritura — se leen pasivamente vía
+telemetría, en dos formas simultáneas (el firmware reporta ambas del mismo pin físico,
+el bloque de Scratch usado decide cuál interpretación aplica):
+- `inputs.gpio1..4` (0/1): lectura digital, para botones/sensores digitales conectados ahí.
+- `inputs.pot1..4` (0-4095, ADC de 12 bits): lectura analógica, para el potenciómetro.
 
 ## Placa → GUI (telemetría)
 
@@ -114,6 +129,7 @@ telemetría (`inputs.gpio1..4`).
     "button_0": 0, "button_1": 0, "button_2": 0, "button_3": 0,
     "button_4": 0, "button_5": 0, "button_6": 0, "button_7": 0,
     "gpio1": 0, "gpio2": 0, "gpio3": 0, "gpio4": 0,
+    "pot1": 0, "pot2": 0, "pot3": 0, "pot4": 0,
     "encoderLeft": 0, "encoderRight": 0,
     "moveId": 0, "moveDone": 1,
     "micLevel": 0
@@ -124,32 +140,59 @@ telemetría (`inputs.gpio1..4`).
 
 | Campo | Tipo | Descripción |
 |---|---|---|
-| `button_0`..`button_7` | 0/1 | Lectura binaria de los 8 botones vía I2C (P0-P7). |
-| `gpio1`..`gpio4` | 0/1 | Entradas digitales playBlocks/play+. |
+| `button_0`..`button_7` | 0/1 | Lectura binaria de los 8 botones (serigrafía B0-B7), vía expansor I2C PCF8574. Arreglados como dos cruces direccionales de 4 botones (B0-B3 a la izquierda del OLED, B4-B7 a la derecha). |
+| `gpio1`..`gpio4` | 0/1 | Lectura digital de IO1-IO4 (playBlocks/play+). |
+| `pot1`..`pot4` | 0-4095 | Lectura analógica (ADC 12 bits) de los mismos IO1-IO4, para el potenciómetro. |
 | `encoderLeft`/`encoderRight` | Int | Conteo acumulado de pulsos IRQ de cada encoder. No se resetea solo — solo vía `resetEncoders`. |
 | `moveId`/`moveDone` | Int / 0\|1 | Ver semántica arriba. |
-| `micLevel` | Int (0-100 sugerido) | Nivel de sonido agregado del micrófono I2S (ej. RMS de una ventana de ~100ms, mapeado a 0-100). No hay streaming de audio real. |
+| `micLevel` | Int (0-100 sugerido) | Nivel de sonido agregado del micrófono I2S (ej. RMS de una ventana de ~100ms, mapeado a 0-100). **Etapa 2** — no es parte del alcance actual, dejado documentado para cuando se implemente. |
 | `version` | String | Versión de firmware (`x.y.z`), comparada contra `https://playcode.tdrobotica.co/firmware/playgo/version.txt` para detectar firmware desactualizado. |
 
 El paquete de `inputs` debe enviarse periódicamente (igual que PlayMe/PlayIoT hoy, no
 especificado un intervalo exacto en este documento — replicar el mismo período que ya
 usan esas placas).
 
-## ⚠️ Punto abierto para confirmar con firmware/hardware
+## Notas de hardware (según plano de la placa)
 
-La ficha de especificaciones de hardware que se usó para diseñar esta extensión
-asigna **el GPIO 33 dos veces**: como `SDA` del bus I2C del OLED, y como
-"Habilitador modo PlayBlock" (salida/alimentación). Uno de los dos datos de la ficha
-es incorrecto — hay que confirmar con el equipo de hardware cuál es el GPIO real de
-cada función antes de fijar el firmware. Este conflicto **no afecta** el protocolo ni
-los bloques de Scratch descritos arriba (el "Habilitador modo PlayBlock" es control
-interno del firmware, sin comando ni bloque expuesto).
+- **GPIO 33 = LED de inicio (blink).** Parpadea automáticamente al encender la placa,
+  controlado enteramente por firmware — **no se expone como comando ni bloque de
+  Scratch** (igual que los LEDs de carga de batería). La duda anterior sobre un
+  conflicto GPIO 33 (SDA del OLED vs "Habilitador modo PlayBlock") queda resuelta:
+  no existe tal conflicto, era un dato desactualizado de la ficha original.
+- **Botones vía PCF8574** (expansor I2C, dirección `0x20` con A0-A2 a GND según el
+  esquemático): el firmware lee los 8 botones (B0-B7) por ese chip y los reporta ya
+  traducidos como `button_0..7` en la telemetría — no cambia nada del protocolo
+  GUI↔firmware descrito arriba, es un detalle interno.
+- **Header I2C genérico** (GND/3.3V/SCL/SDA, aparte del bus interno de botones/OLED):
+  pensado para conectar sensores externos (ultrasonido, sensor de línea) en una
+  etapa futura. Sin bloques ni comandos definidos todavía — pendiente de ver qué
+  módulos exactos se conectan ahí.
+- **Motores: 2x DRV8833** (driver H-bridge dual, uno por rueda). Control estándar de
+  ese chip: PWM en `xIN1` con `xIN2=LOW` = un sentido, PWM en `xIN2` con `xIN1=LOW` =
+  el otro, ambos en LOW = coast (rueda libre), ambos en HIGH = brake.
+- **Parlante: MAX98357A** (amplificador clase D vía I2S — pines SD/SCLK/LRCLK/DIN).
+  El tono (`tone`/`toneStop`) se genera sintetizando una onda (seno) y sacándola por
+  I2S estándar; el pin `SD` debe quedar habilitado para que el ampli no esté en
+  shutdown.
+- **Display: boost a 13V (MT3608)** para la tensión de panel del SH1107 — falta
+  confirmar si ese boost lo habilita el firmware por GPIO antes de inicializar la
+  pantalla, o si arranca solo/siempre encendido.
+
+## Etapa 2 (fuera del alcance actual)
+
+Explícitamente diferido hasta después del demo inicial (LED + motores + pantalla):
+- Micrófono (nivel de sonido, ya documentado arriba como referencia futura).
+- Sensores externos por el header I2C genérico (ultrasonido, línea).
 
 ## Actualización de firmware (esptool-js)
 
-PlayGo se trata igual que PlayMe en `scratch-gui/src/components/sprite-selector/firmware-updater-modal.jsx`
-(mismo chip ESP32-S3): `bootloaderAddress = 0x0000`, reset post-flasheo por pulso RTS
-(no `hard_reset` de esptool-js), sin paso manual de "mantén BOOT presionado".
+**Corregido tras revisar el esquemático v7.1**: PlayGo se trata igual que **PlayIoT**
+en `scratch-gui/src/components/sprite-selector/firmware-updater-modal.jsx` (puente
+CH340 + auto-reset por DTR/RTS), no como PlayMe: `bootloaderAddress = 0x1000`,
+`esploader.after('hard_reset')` para el reset post-flasheo, requiere el paso manual
+de "mantén BOOT presionado" (`waitingForBoot`) hasta confirmar en hardware real si el
+circuito de auto-reset (más elaborado que el de PlayIoT, con flip-flop) permite
+saltárselo.
 
 Binarios esperados en el servidor (mismo hosting que PlayMe/PlayIoT):
 

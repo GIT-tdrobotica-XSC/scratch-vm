@@ -17,6 +17,7 @@ class PlayGoPeripheral {
             button_0: 0, button_1: 0, button_2: 0, button_3: 0,
             button_4: 0, button_5: 0, button_6: 0, button_7: 0,
             gpio1: 0, gpio2: 0, gpio3: 0, gpio4: 0,
+            pot1: 0, pot2: 0, pot3: 0, pot4: 0,
             encoderLeft: 0, encoderRight: 0,
             moveId: 0, moveDone: 1,
             micLevel: 0
@@ -369,6 +370,16 @@ class PlayGo {
                     },
                     category: 'Motores'
                 },
+                {
+                    opcode: 'setServoPlayGo',
+                    blockType: BlockType.COMMAND,
+                    text: 'Servo [PORT] ángulo [ANGLE]°',
+                    arguments: {
+                        PORT: { type: ArgumentType.STRING, menu: 'servoPorts', defaultValue: 'A' },
+                        ANGLE: { type: ArgumentType.NUMBER, defaultValue: 90 }
+                    },
+                    category: 'Motores'
+                },
 
                 // ---- BOTONES ----
                 {
@@ -599,6 +610,15 @@ class PlayGo {
                     category: 'playBlocks / play+'
                 },
                 {
+                    opcode: 'analogReadPB',
+                    blockType: BlockType.REPORTER,
+                    text: 'Entrada analógica playBlocks [PIN] (potenciómetro)',
+                    arguments: {
+                        PIN: { type: ArgumentType.STRING, menu: 'pbInputs', defaultValue: '1' }
+                    },
+                    category: 'playBlocks / play+'
+                },
+                {
                     opcode: 'writeDigitalPB',
                     blockType: BlockType.COMMAND,
                     text: 'Salida playBlocks [PIN] estado [STATE]',
@@ -627,7 +647,19 @@ class PlayGo {
                 },
                 buttonsPlayGo: {
                     acceptReporters: false,
-                    items: ['0', '1', '2', '3', '4', '5', '6', '7'].map(n => ({ text: `P${n}`, value: n }))
+                    // B0-B7 en la serigrafía de la placa: dos cruces direccionales de
+                    // 4 botones cada una (B0-B3 izquierda, B4-B7 derecha).
+                    items: ['0', '1', '2', '3', '4', '5', '6', '7'].map(n => ({ text: `B${n}`, value: n }))
+                },
+                servoPorts: {
+                    acceptReporters: false,
+                    // A/B/C/D = mismos conectores IO11-IO14 (uso dual: salida digital o servo).
+                    items: [
+                        { text: 'A', value: 'A' },
+                        { text: 'B', value: 'B' },
+                        { text: 'C', value: 'C' },
+                        { text: 'D', value: 'D' }
+                    ]
                 },
                 rgbLeds: {
                     acceptReporters: true,
@@ -837,6 +869,25 @@ class PlayGo {
     getEncoderPulses(args) {
         const key = args.WHEEL === 'right' ? 'encoderRight' : 'encoderLeft';
         return this.peripheral.sensorData[key] || 0;
+    }
+
+    // A/B/C/D son los mismos conectores IO11-IO14 (uso dual con writeDigitalPB):
+    // el firmware decide si el pin actúa como salida digital o como servo según
+    // cuál de los dos comandos (digitalWrite/servoWrite) reciba.
+    async setServoPlayGo(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            const portToGpio = { A: 11, B: 12, C: 13, D: 14 };
+            const gpio = portToGpio[args.PORT] || 11;
+            const angle = Math.max(0, Math.min(180, parseInt(args.ANGLE)));
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{ command: 'servoWrite', pin: gpio, angle }]
+            });
+            await this.peripheral._serial.write(json);
+        } catch (e) {
+            console.error('Error en setServoPlayGo:', e);
+        }
     }
 
     // ── Botones ──────────────────────────────────────────────────────────────
@@ -1172,6 +1223,12 @@ class PlayGo {
     readDigitalPB(args) {
         const value = this.peripheral.sensorData[`gpio${args.PIN}`];
         return value === 1;
+    }
+
+    analogReadPB(args) {
+        const raw = this.peripheral.sensorData[`pot${args.PIN}`] || 0;
+        // Mapear 0-4095 (ADC de 12 bits) a 0-100, igual que PlayMe.
+        return Math.round((raw / 4095) * 100);
     }
 
     async writeDigitalPB(args) {
