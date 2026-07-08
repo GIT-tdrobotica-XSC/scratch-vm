@@ -727,8 +727,8 @@ class PlayGo {
                 ioModes: {
                     acceptReporters: false,
                     items: [
-                        { text: 'playBlocks (1-4 entrada fija, A-D salida fija)', value: 'playBlocks' },
-                        { text: 'play+ (configurable)', value: 'play+' }
+                        { text: 'playBlocks (1-4 entrada, A-D salida)', value: 'playBlocks' },
+                        { text: 'play+ (1-4 entrada, A-D salida)', value: 'play+' }
                     ]
                 },
                 pbInputs: {

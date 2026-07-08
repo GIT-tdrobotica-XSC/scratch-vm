@@ -136,11 +136,11 @@ el conflicto ni el manejo especial de I2C que se pensaba antes.
   (mismo sentido que describía el diagrama, solo cambia el número de pin).
 - En modo **playBlocks**: IO1-4 son SIEMPRE entrada, IO11-14 (A-D) son SIEMPRE salida (fijo,
   es lo que ya implementan `readDigitalPB`/`analogReadPB`/`writeDigitalPB`/`servoWrite`).
-- En modo **play+**: cada puerto (1-4 y A-D) debería poder configurarse individualmente
-  como entrada O salida — **pendiente de confirmar con el equipo de hardware/firmware
-  si esto es realmente posible así**. Mientras no esté confirmado, el firmware debe
-  comportarse igual que en modo playBlocks (entradas/salidas fijas) cuando reciba
-  `mode:'play+'`.
+- En modo **play+**: **confirmado por Mauricio Velandia (hardware)** — los puertos
+  quedan igual de FIJOS que en playBlocks (cada uno es entrada o es salida, no
+  configurable dinámicamente por software). No hay diferencia funcional de
+  entradas/salidas entre los dos modos a nivel de firmware; `setIOMode` solo
+  cambia qué tipo de módulo físico está habilitado.
 
 ## Placa → GUI (telemetría)
 
