@@ -601,6 +601,15 @@ class PlayGo {
 
                 // ---- ENTRADAS/SALIDAS playBlocks / play+ ----
                 {
+                    opcode: 'setIOMode',
+                    blockType: BlockType.COMMAND,
+                    text: 'Configurar módulo de extras como [MODE]',
+                    arguments: {
+                        MODE: { type: ArgumentType.STRING, menu: 'ioModes', defaultValue: 'playBlocks' }
+                    },
+                    category: 'playBlocks / play+'
+                },
+                {
                     opcode: 'readDigitalPB',
                     blockType: BlockType.BOOLEAN,
                     text: 'Entrada playBlocks [PIN] activada?',
@@ -715,6 +724,13 @@ class PlayGo {
                         { text: 'W WiFi', value: 'wifi' }
                     ]
                 },
+                ioModes: {
+                    acceptReporters: false,
+                    items: [
+                        { text: 'playBlocks (1-4 entrada fija, A-D salida fija)', value: 'playBlocks' },
+                        { text: 'play+ (configurable)', value: 'play+' }
+                    ]
+                },
                 pbInputs: {
                     acceptReporters: false,
                     items: [
@@ -726,11 +742,12 @@ class PlayGo {
                 },
                 pbOutputs: {
                     acceptReporters: false,
+                    // A/B/C/D en la serigrafía (mismos GPIO 11-14 que servoPorts).
                     items: [
-                        { text: 'Salida 1', value: '11' },
-                        { text: 'Salida 2', value: '12' },
-                        { text: 'Salida 3', value: '13' },
-                        { text: 'Salida 4', value: '14' }
+                        { text: 'A', value: '11' },
+                        { text: 'B', value: '12' },
+                        { text: 'C', value: '13' },
+                        { text: 'D', value: '14' }
                     ]
                 },
                 digitalState: {
@@ -1219,6 +1236,22 @@ class PlayGo {
     }
 
     // ── Entradas/Salidas playBlocks / play+ ─────────────────────────────────
+
+    // El pin que decide el modo (GPIO33) también es la línea SDA del I2C interno
+    // (botones + pantalla) — ver PROTOCOLO.md, sección "Modo IO", para el detalle
+    // de por qué esto necesita cuidado especial del lado del firmware.
+    async setIOMode(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{ command: 'setIOMode', mode: args.MODE }]
+            });
+            await this.peripheral._serial.write(json);
+        } catch (e) {
+            console.error('Error en setIOMode:', e);
+        }
+    }
 
     readDigitalPB(args) {
         const value = this.peripheral.sensorData[`gpio${args.PIN}`];

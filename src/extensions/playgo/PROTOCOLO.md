@@ -114,12 +114,35 @@ serigrafía "1","2","3","4") y 4 conectores de salida (IO11-IO14, serigrafía "A
 | Subcomando | Campos | Descripción |
 |---|---|---|
 | `digitalWrite` | `gpio:Int(11,12,13,14)`, `value:0|1` | Escribe una salida playBlocks/play+ (IO11-IO14 / A-D). |
+| `setIOMode` | `mode:'playBlocks'\|'play+'` | Configura el módulo de extras conectado. Ver sección "Modo IO (GPIO 33)" más abajo — **requiere cuidado especial de implementación**. |
 
 Las entradas (IO1-IO4) **no** tienen comando de escritura — se leen pasivamente vía
 telemetría, en dos formas simultáneas (el firmware reporta ambas del mismo pin físico,
 el bloque de Scratch usado decide cuál interpretación aplica):
 - `inputs.gpio1..4` (0/1): lectura digital, para botones/sensores digitales conectados ahí.
 - `inputs.pot1..4` (0-4095, ADC de 12 bits): lectura analógica, para el potenciómetro.
+
+### Modo IO (GPIO 33) — ⚠️ requiere diseño cuidadoso de firmware
+
+Según el diagrama "Funcionamiento playGo!" compartido por el usuario:
+- **GPIO 33 = selector de modo**: LOW = módulo playBlocks conectado, HIGH = módulo play+ conectado.
+- En modo **playBlocks**: IO1-4 son SIEMPRE entrada, IO11-14 (A-D) son SIEMPRE salida (fijo,
+  es lo que ya implementan `readDigitalPB`/`analogReadPB`/`writeDigitalPB`/`servoWrite`).
+- En modo **play+**: cada puerto (1-4 y A-D) debería poder configurarse individualmente
+  como entrada O salida — **pendiente de confirmar con el equipo de hardware/firmware
+  si esto es realmente posible así**. Mientras no esté confirmado, el firmware debe
+  comportarse igual que en modo playBlocks (entradas/salidas fijas) cuando reciba
+  `mode:'play+'`.
+- **Conflicto físico a resolver en firmware**: el mismo GPIO 33 es también la línea
+  **SDA del I2C interno** (botones PCF8574 + pantalla OLED). No se puede tener el pin
+  actuando como I2C activo Y ser reconfigurado en cualquier momento por software al
+  mismo tiempo. El bloque `setIOMode` de Scratch SÍ necesita poder cambiar el modo en
+  cualquier momento (no solo leerlo al arrancar), así que el firmware tiene que
+  manejarlo con cuidado, por ejemplo: al recibir `setIOMode`, pausar brevemente el I2C
+  (`Wire.end()`), reconfigurar GPIO 33 como salida digital para fijar el modo, y luego
+  reiniciar el I2C (`Wire.begin()`) — verificando que los botones/pantalla sigan
+  funcionando después del cambio. Esto necesita probarse en hardware real; no hay
+  garantía de que funcione limpio sin pruebas.
 
 ## Placa → GUI (telemetría)
 
@@ -154,11 +177,12 @@ usan esas placas).
 
 ## Notas de hardware (según plano de la placa)
 
-- **GPIO 33 = LED de inicio (blink).** Parpadea automáticamente al encender la placa,
-  controlado enteramente por firmware — **no se expone como comando ni bloque de
-  Scratch** (igual que los LEDs de carga de batería). La duda anterior sobre un
-  conflicto GPIO 33 (SDA del OLED vs "Habilitador modo PlayBlock") queda resuelta:
-  no existe tal conflicto, era un dato desactualizado de la ficha original.
+- **GPIO 33 = selector de modo IO (playBlocks/play+), NO es un LED de inicio.**
+  Corrección sobre una nota anterior de este documento (que decía "LED de inicio
+  blink" según la reunión previa) — el diagrama "Funcionamiento playGo!" confirmado
+  por el usuario aclara que es el pin de modo, y que ADEMÁS es la línea SDA del I2C
+  interno (botones+pantalla). Ver sección "Modo IO (GPIO 33)" arriba para el detalle
+  completo y la advertencia de diseño de firmware.
 - **Botones vía PCF8574** (expansor I2C, dirección `0x20` con A0-A2 a GND según el
   esquemático): el firmware lee los 8 botones (B0-B7) por ese chip y los reporta ya
   traducidos como `button_0..7` en la telemetría — no cambia nada del protocolo
