@@ -45,6 +45,17 @@ manda un solo subcomando por mensaje.
 
 ### Motores
 
+**⚠️ Encoder de un solo canal (confirmado por Mauricio Velandia, hardware).** Cada
+rueda tiene 2 pines de encoder ruteados en el esquemático (CHA/CHB), pero **solo uno
+está realmente conectado/funcional** — es una limitación de hardware, no un error de
+esta extensión. Se usa el **canal A** (GPIO 16 izquierdo, GPIO 36 derecho); el canal B
+(GPIO 15/35) no se usa. Consecuencia directa: el encoder **solo cuenta pulsos, no
+puede determinar la dirección de giro por sí mismo** (para eso se necesitan los 2
+canales en cuadratura). El firmware debe **inferir la dirección desde el último
+comando de PWM enviado a esa rueda** (guardar el signo de `left`/`right` de
+`setMotorSpeed`/`moveDistance`/etc. y aplicar ese signo al incrementar/decrementar el
+contador de pulsos en la interrupción), no leyendo un segundo canal.
+
 | Subcomando | Campos | Descripción |
 |---|---|---|
 | `setMotorSpeed` | `left:Number(-100..100)`, `right:Number(-100..100)` | Velocidad directa de cada rueda, lazo abierto (sin encoder). Negativo = reversa. |
@@ -195,9 +206,11 @@ usan esas placas).
   ese chip: PWM en `xIN1` con `xIN2=LOW` = un sentido, PWM en `xIN2` con `xIN1=LOW` =
   el otro, ambos en LOW = coast (rueda libre), ambos en HIGH = brake.
   **Pines confirmados por el esquemático del MCU (corrigiendo una inversión de la
-  ficha original):** motor **izquierdo** en GPIO 17/18 (driver) + GPIO 15/16 (encoder);
-  motor **derecho** en GPIO 37/38 (driver) + GPIO 35/36 (encoder). La ficha original
-  tenía estos dos lados invertidos.
+  ficha original):** motor **izquierdo** en GPIO 17/18 (driver) + GPIO 16 (encoder,
+  un solo canal — GPIO 15 sin usar); motor **derecho** en GPIO 37/38 (driver) +
+  GPIO 36 (encoder, un solo canal — GPIO 35 sin usar). La ficha original tenía los
+  dos lados invertidos. Ver sección "Motores" arriba para el detalle del encoder de
+  un solo canal y cómo se infiere la dirección.
 - **Audio confirmado por el usuario:** parlante (I2S salida, MAX98357A) en BCK=8,
   WS=9, DOUT=10. Micrófono (I2S entrada, etapa 2) en SCK=5, WS=6, SD=7.
 - **Parlante: MAX98357A** (amplificador clase D vía I2S — pines SD/SCLK/LRCLK/DIN).
