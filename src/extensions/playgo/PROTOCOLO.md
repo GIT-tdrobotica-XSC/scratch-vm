@@ -87,7 +87,16 @@ debe:
 |---|---|---|
 | `setRGB` | `led?:Int(0-9)`, `r:Int(0-255)`, `g:Int(0-255)`, `b:Int(0-255)` | Si `led` está presente, cambia solo ese LED; si se omite, aplica el color a los 10 LEDs. |
 
-### Pantalla OLED (SH1107 128x128, I2C)
+### Pantalla OLED (SH1107, I2C)
+
+**⚠️ Corrección confirmada en hardware real: el panel es de 96x96 píxeles, NO
+128x128** como decía la ficha original. El firmware debe inicializar el driver
+SH1107 con esas dimensiones (96x96), y cualquier cálculo de coordenadas/líneas
+basado en 128px (por ejemplo el alto de cada "línea" en `oledLine`/`oledNumber`,
+antes `128/4=32px`, ahora `96/4=24px`) debe recalcularse para 96px. Los valores
+por defecto de X/Y en algunos bloques (`oledDrawLine`, `oledDrawCircle`,
+`oledEmoji`) fueron elegidos pensando en un lienzo de 128px — quedan un poco
+descentrados en 96px pero siguen siendo válidos (el usuario los puede cambiar).
 
 Mismo set de comandos que ya usa PlayMe (reutilizado tal cual):
 
@@ -143,8 +152,10 @@ es únicamente la línea SDA del I2C interno, sin doble función; el `setIOMode`
 implementarse como un simple `digitalWrite` en GPIO 21 en cualquier momento, **sin**
 el conflicto ni el manejo especial de I2C que se pensaba antes.
 
-- **GPIO 21 (ENB_PB) = selector de modo**: LOW = módulo playBlocks, HIGH = módulo play+
-  (mismo sentido que describía el diagrama, solo cambia el número de pin).
+- **GPIO 21 (ENB_PB) = selector de modo**: **corregido en hardware real — HIGH =
+  módulo playBlocks, LOW = módulo play+** (la polaridad asumida originalmente
+  (LOW=playBlocks, HIGH=play+) estaba invertida: al probar en la placa, seleccionar
+  "play+" encendía el indicador LED de "playBlocks" y viceversa).
 - En modo **playBlocks**: IO1-4 son SIEMPRE entrada, IO11-14 (A-D) son SIEMPRE salida (fijo,
   es lo que ya implementan `readDigitalPB`/`analogReadPB`/`writeDigitalPB`/`servoWrite`).
 - En modo **play+**: **confirmado por Mauricio Velandia (hardware)** — los puertos
