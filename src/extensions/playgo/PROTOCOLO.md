@@ -204,9 +204,10 @@ usan esas placas).
   El tono (`tone`/`toneStop`) se genera sintetizando una onda (seno) y sacándola por
   I2S estándar; el pin `SD` debe quedar habilitado para que el ampli no esté en
   shutdown.
-- **Display: boost a 13V (MT3608)** para la tensión de panel del SH1107 — falta
-  confirmar si ese boost lo habilita el firmware por GPIO antes de inicializar la
-  pantalla, o si arranca solo/siempre encendido.
+- **Display: boost a 13V (MT3608) confirmado como automático/pasivo.** El conector
+  del display (X2, GND/3.3V/SDA/SCL/VPP) no tiene ningún pin de "enable" — el boost
+  arranca solo con la alimentación de 3.3V. El firmware puede inicializar el OLED
+  directo, sin necesidad de prender ningún GPIO adicional antes.
 
 ## Etapa 2 (fuera del alcance actual)
 
