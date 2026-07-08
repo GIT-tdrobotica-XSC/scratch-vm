@@ -114,7 +114,7 @@ serigrafía "1","2","3","4") y 4 conectores de salida (IO11-IO14, serigrafía "A
 | Subcomando | Campos | Descripción |
 |---|---|---|
 | `digitalWrite` | `gpio:Int(11,12,13,14)`, `value:0|1` | Escribe una salida playBlocks/play+ (IO11-IO14 / A-D). |
-| `setIOMode` | `mode:'playBlocks'\|'play+'` | Configura el módulo de extras conectado. Ver sección "Modo IO (GPIO 33)" más abajo — **requiere cuidado especial de implementación**. |
+| `setIOMode` | `mode:'playBlocks'\|'play+'` | Configura el módulo de extras conectado. Ver sección "Modo IO (GPIO 21 / señal ENB_PB)" más abajo. |
 
 Las entradas (IO1-IO4) **no** tienen comando de escritura — se leen pasivamente vía
 telemetría, en dos formas simultáneas (el firmware reporta ambas del mismo pin físico,
@@ -122,10 +122,18 @@ el bloque de Scratch usado decide cuál interpretación aplica):
 - `inputs.gpio1..4` (0/1): lectura digital, para botones/sensores digitales conectados ahí.
 - `inputs.pot1..4` (0-4095, ADC de 12 bits): lectura analógica, para el potenciómetro.
 
-### Modo IO (GPIO 33) — ⚠️ requiere diseño cuidadoso de firmware
+### Modo IO (GPIO 21 / señal ENB_PB)
 
-Según el diagrama "Funcionamiento playGo!" compartido por el usuario:
-- **GPIO 33 = selector de modo**: LOW = módulo playBlocks conectado, HIGH = módulo play+ conectado.
+**Corregido tras revisar el esquemático detallado del MCU (U12, ESP32-S3-MINI-1):**
+el selector de modo NO es el GPIO 33 (esa idea venía de una lectura previa del
+diagrama "Funcionamiento playGo!", ambigua). El esquemático del MCU muestra una señal
+dedicada **`ENB_PB` en GPIO 21**, separada del I2C — confirmado por el usuario. GPIO 33
+es únicamente la línea SDA del I2C interno, sin doble función; el `setIOMode` puede
+implementarse como un simple `digitalWrite` en GPIO 21 en cualquier momento, **sin**
+el conflicto ni el manejo especial de I2C que se pensaba antes.
+
+- **GPIO 21 (ENB_PB) = selector de modo**: LOW = módulo playBlocks, HIGH = módulo play+
+  (mismo sentido que describía el diagrama, solo cambia el número de pin).
 - En modo **playBlocks**: IO1-4 son SIEMPRE entrada, IO11-14 (A-D) son SIEMPRE salida (fijo,
   es lo que ya implementan `readDigitalPB`/`analogReadPB`/`writeDigitalPB`/`servoWrite`).
 - En modo **play+**: cada puerto (1-4 y A-D) debería poder configurarse individualmente
@@ -133,16 +141,6 @@ Según el diagrama "Funcionamiento playGo!" compartido por el usuario:
   si esto es realmente posible así**. Mientras no esté confirmado, el firmware debe
   comportarse igual que en modo playBlocks (entradas/salidas fijas) cuando reciba
   `mode:'play+'`.
-- **Conflicto físico a resolver en firmware**: el mismo GPIO 33 es también la línea
-  **SDA del I2C interno** (botones PCF8574 + pantalla OLED). No se puede tener el pin
-  actuando como I2C activo Y ser reconfigurado en cualquier momento por software al
-  mismo tiempo. El bloque `setIOMode` de Scratch SÍ necesita poder cambiar el modo en
-  cualquier momento (no solo leerlo al arrancar), así que el firmware tiene que
-  manejarlo con cuidado, por ejemplo: al recibir `setIOMode`, pausar brevemente el I2C
-  (`Wire.end()`), reconfigurar GPIO 33 como salida digital para fijar el modo, y luego
-  reiniciar el I2C (`Wire.begin()`) — verificando que los botones/pantalla sigan
-  funcionando después del cambio. Esto necesita probarse en hardware real; no hay
-  garantía de que funcione limpio sin pruebas.
 
 ## Placa → GUI (telemetría)
 
@@ -177,16 +175,18 @@ usan esas placas).
 
 ## Notas de hardware (según plano de la placa)
 
-- **GPIO 33 = selector de modo IO (playBlocks/play+), NO es un LED de inicio.**
-  Corrección sobre una nota anterior de este documento (que decía "LED de inicio
-  blink" según la reunión previa) — el diagrama "Funcionamiento playGo!" confirmado
-  por el usuario aclara que es el pin de modo, y que ADEMÁS es la línea SDA del I2C
-  interno (botones+pantalla). Ver sección "Modo IO (GPIO 33)" arriba para el detalle
-  completo y la advertencia de diseño de firmware.
+- **No hay LED de inicio dedicado.** La nota original (de la reunión previa, "LED de
+  inicio blink" en GPIO 33) no corresponde a ningún pin real confirmado en los
+  esquemáticos — se descarta. GPIO 33 es únicamente SDA del I2C interno; el selector
+  de modo es GPIO 21 (ENB_PB), ver sección "Modo IO" arriba. Si se quiere una
+  animación de arranque, usar el RGB (GPIO 48, confirmado) en vez de un LED dedicado.
 - **Botones vía PCF8574** (expansor I2C, dirección `0x20` con A0-A2 a GND según el
   esquemático): el firmware lee los 8 botones (B0-B7) por ese chip y los reporta ya
   traducidos como `button_0..7` en la telemetría — no cambia nada del protocolo
   GUI↔firmware descrito arriba, es un detalle interno.
+- **I2C interno confirmado: SDA = GPIO 33, SCL = GPIO 34** (botones PCF8574 + pantalla
+  OLED), consistente entre la ficha original, el diagrama de modos y el esquemático
+  del MCU.
 - **Header I2C genérico** (GND/3.3V/SCL/SDA, aparte del bus interno de botones/OLED):
   pensado para conectar sensores externos (ultrasonido, sensor de línea) en una
   etapa futura. Sin bloques ni comandos definidos todavía — pendiente de ver qué
@@ -194,6 +194,12 @@ usan esas placas).
 - **Motores: 2x DRV8833** (driver H-bridge dual, uno por rueda). Control estándar de
   ese chip: PWM en `xIN1` con `xIN2=LOW` = un sentido, PWM en `xIN2` con `xIN1=LOW` =
   el otro, ambos en LOW = coast (rueda libre), ambos en HIGH = brake.
+  **Pines confirmados por el esquemático del MCU (corrigiendo una inversión de la
+  ficha original):** motor **izquierdo** en GPIO 17/18 (driver) + GPIO 15/16 (encoder);
+  motor **derecho** en GPIO 37/38 (driver) + GPIO 35/36 (encoder). La ficha original
+  tenía estos dos lados invertidos.
+- **Audio confirmado por el usuario:** parlante (I2S salida, MAX98357A) en BCK=8,
+  WS=9, DOUT=10. Micrófono (I2S entrada, etapa 2) en SCK=5, WS=6, SD=7.
 - **Parlante: MAX98357A** (amplificador clase D vía I2S — pines SD/SCLK/LRCLK/DIN).
   El tono (`tone`/`toneStop`) se genera sintetizando una onda (seno) y sacándola por
   I2S estándar; el pin `SD` debe quedar habilitado para que el ampli no esté en

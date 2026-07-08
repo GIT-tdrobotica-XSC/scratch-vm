@@ -1237,9 +1237,8 @@ class PlayGo {
 
     // ── Entradas/Salidas playBlocks / play+ ─────────────────────────────────
 
-    // El pin que decide el modo (GPIO33) también es la línea SDA del I2C interno
-    // (botones + pantalla) — ver PROTOCOLO.md, sección "Modo IO", para el detalle
-    // de por qué esto necesita cuidado especial del lado del firmware.
+    // El selector de modo es GPIO21 (señal ENB_PB), independiente del I2C interno
+    // (SDA/SCL en GPIO33/34) — ver PROTOCOLO.md, sección "Modo IO".
     async setIOMode(args) {
         if (!this.peripheral.isConnected()) return;
         try {
