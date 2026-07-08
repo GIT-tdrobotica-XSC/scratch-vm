@@ -191,10 +191,11 @@ usan esas placas).
   esquemáticos — se descarta. GPIO 33 es únicamente SDA del I2C interno; el selector
   de modo es GPIO 21 (ENB_PB), ver sección "Modo IO" arriba. Si se quiere una
   animación de arranque, usar el RGB (GPIO 48, confirmado) en vez de un LED dedicado.
-- **Botones vía PCF8574** (expansor I2C, dirección `0x20` con A0-A2 a GND según el
-  esquemático): el firmware lee los 8 botones (B0-B7) por ese chip y los reporta ya
-  traducidos como `button_0..7` en la telemetría — no cambia nada del protocolo
-  GUI↔firmware descrito arriba, es un detalle interno.
+- **Botones vía PCF8574** — **dirección real confirmada por `i2c.scan()` en hardware:
+  `0x21`, no `0x20`** como decía el esquemático (A0 debe estar en HIGH en vez de GND
+  en la unidad física probada). El firmware lee los 8 botones (B0-B7) por ese chip y
+  los reporta ya traducidos como `button_0..7` en la telemetría — no cambia nada del
+  protocolo GUI↔firmware descrito arriba, es un detalle interno.
 - **I2C interno confirmado: SDA = GPIO 33, SCL = GPIO 34** (botones PCF8574 + pantalla
   OLED), consistente entre la ficha original, el diagrama de modos y el esquemático
   del MCU.
