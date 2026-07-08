@@ -142,6 +142,16 @@ el bloque de Scratch usado decide cuál interpretación aplica):
 - `inputs.gpio1..4` (0/1): lectura digital, para botones/sensores digitales conectados ahí.
 - `inputs.pot1..4` (0-4095, ADC de 12 bits): lectura analógica, para el potenciómetro.
 
+**⚠️ Bug de firmware encontrado y corregido probando en hardware real:** en el
+ESP32, llamar `analogRead()` en un pin deja ese pin reconfigurado en modo ADC — un
+`digitalRead()` posterior en el **mismo pin** no vuelve a leer digital correctamente
+a menos que se llame `pinMode(pin, INPUT)` de nuevo primero. Como la telemetría lee
+`gpio1..4` (digital) y `pot1..4` (analógico) de los mismos 4 pines en cada ciclo, sin
+este `pinMode()` explícito antes de cada `digitalRead()` el valor digital queda
+siempre en `0` (confirmado: el potenciómetro funcionaba pero la entrada digital
+booleana daba siempre `false`). El firmware debe hacer `pinMode(pin, INPUT)`
+inmediatamente antes de cada `digitalRead()` de IO1-4, en cada ciclo de telemetría.
+
 ### Modo IO (GPIO 21 / señal ENB_PB)
 
 **Corregido tras revisar el esquemático detallado del MCU (U12, ESP32-S3-MINI-1):**
