@@ -89,14 +89,24 @@ debe:
 
 ### Pantalla OLED (SH1107, I2C)
 
-**⚠️ Corrección confirmada en hardware real: el panel es de 96x96 píxeles, NO
-128x128** como decía la ficha original. El firmware debe inicializar el driver
-SH1107 con esas dimensiones (96x96), y cualquier cálculo de coordenadas/líneas
-basado en 128px (por ejemplo el alto de cada "línea" en `oledLine`/`oledNumber`,
-antes `128/4=32px`, ahora `96/4=24px`) debe recalcularse para 96px. Los valores
-por defecto de X/Y en algunos bloques (`oledDrawLine`, `oledDrawCircle`,
-`oledEmoji`) fueron elegidos pensando en un lienzo de 128px — quedan un poco
-descentrados en 96px pero siguen siendo válidos (el usuario los puede cambiar).
+**Corrección final confirmada con un script de prueba del equipo de hardware:**
+el controlador **SÍ direcciona 128x128 nativo** (la ficha original tenía razón),
+pero el **vidrio visible es más chico (~96x96) y está centrado dentro de ese
+lienzo físico** — no es que el panel "sea" 96x96, es que solo se ve una ventana
+recortada de un área direccionable mayor. El script de prueba confirmó esto
+dibujando con `blit(fb, 15, 15)` sobre un display inicializado como 128x128 con
+los valores **estándar** de esa configuración (`multiplex=0x7F`, `offset=0x00`
+— los mismos que ya trae por defecto cualquier librería SH1107 bien soportada
+para 128x128, sin necesidad de valores inventados).
+
+Implementación correcta: inicializar el controlador como 128x128 con los valores
+estándar (no reducir el tamaño declarado), y aplicar un **desplazamiento de
+coordenadas de +16px en X e Y** a todo lo que dibujan los bloques de Scratch —
+así el área lógica de 96x96 que usan los bloques (`oledDrawLine`, `oledTextXY`,
+etc., coordenadas 0-95) queda centrada dentro del vidrio visible real. El offset
+de 16px es el centrado matemático exacto ((128-96)/2); el script de referencia
+usó 15px por preferencia visual de margen para su logo — si al probar la imagen
+no queda perfectamente centrada, ajustar este valor en 1-2px.
 
 Mismo set de comandos que ya usa PlayMe (reutilizado tal cual):
 
