@@ -132,6 +132,10 @@ Mismo set de comandos que ya usa PlayMe (reutilizado tal cual):
 | `tone` | `freq:Number(Hz)`, `durationMs:Number` | Reproduce un tono simple por el I2S de salida. No bloqueante del lado firmware (debe poder recibir otros comandos mientras suena). |
 | `toneStop` | — | Corta el tono en curso. |
 
+El bloque "Reproducir nota" (Do/Re/Mi/Fa/Sol/La/Si + octava) es puramente del lado GUI:
+convierte nota+octava a Hz (temperamento igual, A4=440Hz) y envía el mismo subcomando
+`tone` de arriba. El firmware no necesita saber nada de notas musicales.
+
 No hay comando de streaming de audio — el protocolo no lo soporta (JSON por línea,
 no binario). El micrófono solo reporta un nivel agregado (ver telemetría).
 

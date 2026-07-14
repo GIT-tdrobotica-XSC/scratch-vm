@@ -587,6 +587,17 @@ class PlayGo {
                     category: 'Audio'
                 },
                 {
+                    opcode: 'playNote',
+                    blockType: BlockType.COMMAND,
+                    text: 'Reproducir nota [NOTE] octava [OCTAVE] por [DURATION] ms',
+                    arguments: {
+                        NOTE: { type: ArgumentType.STRING, menu: 'musicNotes', defaultValue: 'C' },
+                        OCTAVE: { type: ArgumentType.NUMBER, defaultValue: 4 },
+                        DURATION: { type: ArgumentType.NUMBER, defaultValue: 500 }
+                    },
+                    category: 'Audio'
+                },
+                {
                     opcode: 'stopTone',
                     blockType: BlockType.COMMAND,
                     text: 'Detener tono',
@@ -729,6 +740,18 @@ class PlayGo {
                     items: [
                         { text: 'playBlocks (1-4 entrada, A-D salida)', value: 'playBlocks' },
                         { text: 'play+ (1-4 entrada, A-D salida)', value: 'play+' }
+                    ]
+                },
+                musicNotes: {
+                    acceptReporters: false,
+                    items: [
+                        { text: 'Do', value: 'C' },
+                        { text: 'Re', value: 'D' },
+                        { text: 'Mi', value: 'E' },
+                        { text: 'Fa', value: 'F' },
+                        { text: 'Sol', value: 'G' },
+                        { text: 'La', value: 'A' },
+                        { text: 'Si', value: 'B' }
                     ]
                 },
                 pbInputs: {
@@ -1215,6 +1238,27 @@ class PlayGo {
             await this.peripheral._serial.write(json);
         } catch (e) {
             console.error('Error en playTone:', e);
+        }
+    }
+
+    async playNote(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            // Semitonos desde Do (C) hasta cada nota, usada junto con la octava
+            // para calcular la frecuencia por temperamento igual (A4 = 440Hz).
+            const SEMITONES_FROM_C = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+            const semitone = SEMITONES_FROM_C[args.NOTE] ?? 0;
+            const octave = parseInt(args.OCTAVE);
+            const semitonesFromA4 = (octave - 4) * 12 + (semitone - 9);
+            const freq = Math.round(440 * Math.pow(2, semitonesFromA4 / 12));
+            const durationMs = Math.max(0, parseInt(args.DURATION));
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{ command: 'tone', freq, durationMs }]
+            });
+            await this.peripheral._serial.write(json);
+        } catch (e) {
+            console.error('Error en playNote:', e);
         }
     }
 
