@@ -125,6 +125,18 @@ Mismo set de comandos que ya usa PlayMe (reutilizado tal cual):
 | `oledDrawPixel` | `x:Int`, `y:Int` |
 | `oledDisplay` | — (fuerza refresco de pantalla si el firmware buffer-ea el dibujo) |
 
+**Importante (confirmado v1.6, fix de rendimiento):** todos los `oled*` de arriba
+(excepto `oledDisplay`) **solo escriben en el framebuffer en RAM**, no tocan el
+panel físico. `oledDisplay` es el único comando que hace el volcado real por I2C.
+Antes (v1.1-v1.5) cada comando de dibujo hacía su propio `display.display()`
+inmediato -- un volcado completo de 128x128px por I2C (decenas de ms) por CADA
+figura. Como el firmware es de un solo hilo, mientras estaba ocupado mandando
+esos bytes por I2C no leía el siguiente comando serial ni corría el tick de
+movimiento -- eso se sentía como lag en motores/RGB al combinarlos con OLED.
+**Cualquier secuencia de dibujo en Scratch ahora debe terminar con el bloque
+"OLED actualizar pantalla" (`oledDisplay`) para que se vea el resultado** --
+dibujar sin ese bloque al final ya no actualiza el panel físico.
+
 ### Audio
 
 | Subcomando | Campos | Descripción |
