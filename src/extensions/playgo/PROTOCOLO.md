@@ -159,17 +159,26 @@ muestra duplicada en ambos canales. Configurarlo como `I2S_CHANNEL_FMT_ONLY_LEFT
 mezcla el tono real con esa basura y suena distorsionado/con tono incorrecto.
 Fix: `I2S_CHANNEL_FMT_RIGHT_LEFT` + escribir cada muestra dos veces (L y R).
 
-**Segundo bug de audio confirmado y corregido (v1.7)** — el anterior no era
-suficiente: seguía sonando "a ruido, ninguna nota reconocible". Causa real:
-`i2s_write()` se llamaba con timeout no bloqueante (`0`). `loop()` genera
-muestras mucho más rápido de lo que se reproducen (~2.9ms por bloque de 128
-muestras); cuando el buffer DMA se llena, un write no bloqueante se descarta
-en silencio, pero el acumulador de fase de la onda (`tonePhase`) igual
-avanzaba como si esas muestras se hubieran reproducido. Eso desincroniza la
-fase del audio realmente emitido, sonando como ruido en vez de un tono limpio
-— coherente con `freq` llegando correcto (verificado en el log TX) pero el
-audio sonando mal de todas formas. Fix: `i2s_write()` con `portMAX_DELAY`
-(bloqueante), igual patrón que ya usaba `silenceI2S()`.
+**Segundo bug de audio confirmado y corregido (v1.8, tras un intento fallido
+en v1.7)** — el fix de canales no era suficiente: seguía sonando "a ruido,
+ninguna nota reconocible". Eran DOS causas combinadas:
+
+1. **Firmware**: `i2s_write()` no bloqueante descarta el bloque cuando el DMA
+   está lleno, pero el acumulador de fase (`tonePhase`) avanzaba igual —
+   desincronizando la fase de la onda emitida (ruido en vez de tono). El
+   primer intento de fix (v1.7: write bloqueante con `portMAX_DELAY`) trababa
+   `loop()` entero esperando al DMA — motores y serial con lag. **Fix real
+   (v1.8)**: write no bloqueante + avanzar `tonePhase` solo por los frames
+   que el DMA aceptó de verdad (`written`). Además `tx_desc_auto_clear=true`
+   (en underrun el DMA repetía el último buffer en loop: basura audible) y
+   `silenceI2S()` vía `i2s_zero_dma_buffer()` (instantáneo, no bloqueante).
+
+2. **GUI (`blocks.js`)**: `playTone`/`playNote` enviaban el comando y
+   retornaban de inmediato, sin esperar `durationMs`. Una secuencia de bloques
+   de notas (Do→Re→Mi) llegaba al firmware en milisegundos y cada `tone`
+   pisaba al anterior — por eso "no suena ninguna escala". Fix: los bloques
+   ahora esperan la duración antes de soltar el hilo de Scratch, igual que
+   los bloques de música nativos de Scratch.
 
 ### Entradas/Salidas playBlocks y play+
 

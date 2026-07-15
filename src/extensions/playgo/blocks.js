@@ -1236,6 +1236,11 @@ class PlayGo {
                 testValue: [{ command: 'tone', freq, durationMs }]
             });
             await this.peripheral._serial.write(json);
+            // Esperar la duración antes de soltar el hilo de Scratch: sin esto,
+            // bloques de tono consecutivos llegan al firmware en milisegundos y
+            // cada uno pisa al anterior (se oye un barrido de glitches en vez
+            // de la secuencia de notas).
+            await new Promise(resolve => setTimeout(resolve, durationMs));
         } catch (e) {
             console.error('Error en playTone:', e);
         }
@@ -1257,6 +1262,9 @@ class PlayGo {
                 testValue: [{ command: 'tone', freq, durationMs }]
             });
             await this.peripheral._serial.write(json);
+            // Igual que playTone: esperar la duración para que una secuencia de
+            // notas (Do, Re, Mi...) suene como melodía y no se pisen entre sí.
+            await new Promise(resolve => setTimeout(resolve, durationMs));
         } catch (e) {
             console.error('Error en playNote:', e);
         }
