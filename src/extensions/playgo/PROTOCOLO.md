@@ -149,21 +149,38 @@ son puramente del lado GUI: convierten nota+octava a Hz (temperamento igual,
 A4=440Hz) y envían el mismo subcomando `tone` de arriba. El firmware no
 necesita saber nada de notas musicales.
 
-**"Mantener nota"** (`holdNote` en blocks.js) es para el patrón "nota constante
-mientras un botón está oprimido": a diferencia de "Reproducir nota", no espera
-ninguna duración — envía `tone` con `durationMs:0` y retorna de inmediato, para
-que un `por siempre: si <botón oprimido> entonces Mantener nota...` pueda
-revisar el botón en cada vuelta sin bloquearse. El firmware no reinicia
-`tonePhase` en cada llamada a `handleTone()`, así que reenviar la misma nota
-mientras ya está sonando (justo lo que pasa al reevaluar el bloque en cada
-vuelta del bucle) no corta ni chasquea el sonido — uso típico:
+**"Mantener nota" / "Soltar nota"** (`holdNote`/`releaseNote` en blocks.js) son
+para el patrón "nota constante mientras un botón está oprimido". "Mantener
+nota" no espera ninguna duración — envía `tone` con `durationMs:0` y retorna de
+inmediato, para que el bucle pueda seguir revisando el botón. "Soltar nota"
+detiene el sonido **solo si esa nota específica es la que está sostenida**.
+
+La GUI lleva registro de la nota sostenida (`_heldFreq`) y con eso:
+- **deduplica**: reevaluar "Mantener nota" con la misma nota ~30 veces/seg (lo
+  normal dentro de un por-siempre) envía el comando UNA sola vez, no satura el
+  serial;
+- **aísla cada botón**: en un "piano" de varios `si/si no` planos dentro del
+  mismo por-siempre, el `si no → Soltar nota X` de un botón NO oprimido no hace
+  nada si lo que suena es otra nota — no mata la nota del botón que sí está
+  oprimido. (Con "Detener tono" genérico en cada rama else, cada botón no
+  oprimido apagaba la nota de los demás ~30 veces por segundo: sonido
+  entrecortado o mudo. "Detener tono" sigue existiendo como corte global.)
+
+Uso típico (repetir el par por cada botón/nota dentro del mismo por-siempre):
 ```
 por siempre:
-  si <botón A oprimido> entonces
-    Mantener nota Do octava 4
+  si <botón B1 oprimido> entonces
+    Mantener nota Re octava 7
   si no:
-    Detener tono
+    Soltar nota Re octava 7
+  si <botón B2 oprimido> entonces
+    Mantener nota Mi octava 7
+  si no:
+    Soltar nota Mi octava 7
+  ...
 ```
+Es monofónico (un solo generador de tono en el firmware): si se oprimen dos
+botones a la vez, suena el último que se evaluó.
 
 **Octavas 1-3 confirmadas inaudibles** en el parlante pequeño de PlayGo (~33-247Hz,
 fuera del rango que reproduce el hardware). El menú `OCTAVE` del bloque se restringió

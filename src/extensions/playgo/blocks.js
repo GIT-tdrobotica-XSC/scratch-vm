@@ -290,6 +290,10 @@ class PlayGo {
     constructor(runtime, extensionId) {
         this.runtime = runtime;
         this.peripheral = new PlayGoPeripheral(runtime, extensionId);
+        // Frecuencia (Hz) de la nota actualmente sostenida por holdNote, o
+        // null si no hay ninguna. Permite deduplicar reenvios y que
+        // releaseNote suelte solo su propia nota (ver ambos metodos).
+        this._heldFreq = null;
     }
 
     getInfo() {
@@ -601,6 +605,16 @@ class PlayGo {
                     opcode: 'holdNote',
                     blockType: BlockType.COMMAND,
                     text: 'Mantener nota [NOTE] octava [OCTAVE]',
+                    arguments: {
+                        NOTE: { type: ArgumentType.STRING, menu: 'musicNotes', defaultValue: 'C' },
+                        OCTAVE: { type: ArgumentType.STRING, menu: 'musicOctaves', defaultValue: '4' }
+                    },
+                    category: 'Audio'
+                },
+                {
+                    opcode: 'releaseNote',
+                    blockType: BlockType.COMMAND,
+                    text: 'Soltar nota [NOTE] octava [OCTAVE]',
                     arguments: {
                         NOTE: { type: ArgumentType.STRING, menu: 'musicNotes', defaultValue: 'C' },
                         OCTAVE: { type: ArgumentType.STRING, menu: 'musicOctaves', defaultValue: '4' }
@@ -1248,6 +1262,14 @@ class PlayGo {
 
     // ── Audio ────────────────────────────────────────────────────────────────
 
+    // Nota+octava -> Hz por temperamento igual (A4 = 440Hz).
+    _noteToFreq(note, octave) {
+        const SEMITONES_FROM_C = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+        const semitone = SEMITONES_FROM_C[note] ?? 0;
+        const semitonesFromA4 = (parseInt(octave) - 4) * 12 + (semitone - 9);
+        return Math.round(440 * Math.pow(2, semitonesFromA4 / 12));
+    }
+
     async playTone(args) {
         if (!this.peripheral.isConnected()) return;
         try {
@@ -1256,6 +1278,7 @@ class PlayGo {
             // firmware ("mantener sonando indefinidamente", ver holdNote) que no
             // aplica a este bloque.
             const durationMs = Math.max(1, parseInt(args.DURATION));
+            this._heldFreq = null; // este tono con duracion pisa cualquier nota sostenida
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{ command: 'tone', freq, durationMs }]
@@ -1274,14 +1297,9 @@ class PlayGo {
     async playNote(args) {
         if (!this.peripheral.isConnected()) return;
         try {
-            // Semitonos desde Do (C) hasta cada nota, usada junto con la octava
-            // para calcular la frecuencia por temperamento igual (A4 = 440Hz).
-            const SEMITONES_FROM_C = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
-            const semitone = SEMITONES_FROM_C[args.NOTE] ?? 0;
-            const octave = parseInt(args.OCTAVE);
-            const semitonesFromA4 = (octave - 4) * 12 + (semitone - 9);
-            const freq = Math.round(440 * Math.pow(2, semitonesFromA4 / 12));
+            const freq = this._noteToFreq(args.NOTE, args.OCTAVE);
             const durationMs = Math.max(1, parseInt(args.DURATION));
+            this._heldFreq = null; // esta nota con duracion pisa cualquier nota sostenida
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{ command: 'tone', freq, durationMs }]
@@ -1296,21 +1314,23 @@ class PlayGo {
     }
 
     async holdNote(args) {
-        if (!this.peripheral.isConnected()) return;
+        if (!this.peripheral.isConnected()) {
+            this._heldFreq = null;
+            return;
+        }
         try {
-            const SEMITONES_FROM_C = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
-            const semitone = SEMITONES_FROM_C[args.NOTE] ?? 0;
-            const octave = parseInt(args.OCTAVE);
-            const semitonesFromA4 = (octave - 4) * 12 + (semitone - 9);
-            const freq = Math.round(440 * Math.pow(2, semitonesFromA4 / 12));
+            const freq = this._noteToFreq(args.NOTE, args.OCTAVE);
+            // Deduplicacion: si esta nota ya es la que esta sostenida, no
+            // reenviar nada. En el patron tipico ("por siempre: si boton
+            // oprimido -> mantener nota") este bloque se reevalua ~30 veces
+            // por segundo; sin esto se satura el serial con comandos identicos.
+            if (this._heldFreq === freq) return;
+            this._heldFreq = freq;
             const json = JSON.stringify({
-                // durationMs:0 = "sostener indefinidamente" para el firmware.
-                // A diferencia de playNote, NO se espera nada aca: retorna de
-                // inmediato para que un "por siempre: si boton oprimido..." pueda
-                // revisar el estado del boton en cada vuelta sin quedar bloqueado.
-                // Volver a llamar este bloque con la misma nota mientras suena no
-                // reinicia la onda (el firmware no resetea la fase), asi que es
-                // seguro re-invocarlo en cada iteracion sin que "chasquee".
+                // durationMs:0 = "sostener indefinidamente" para el firmware:
+                // suena hasta que llegue un toneStop. A diferencia de playNote,
+                // NO se espera nada aca -- retorna de inmediato para que el
+                // bucle pueda seguir revisando el estado del boton.
                 command: 'outputsQueue',
                 testValue: [{ command: 'tone', freq, durationMs: 0 }]
             });
@@ -1320,9 +1340,32 @@ class PlayGo {
         }
     }
 
+    async releaseNote(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            const freq = this._noteToFreq(args.NOTE, args.OCTAVE);
+            // Solo detiene el sonido si ESTA nota es la que esta sostenida.
+            // Esto permite el patron de "piano" con varios si/si-no planos
+            // dentro de un mismo por-siempre: el "si no" de un boton NO
+            // oprimido suelta solo su propia nota, sin matar la del boton que
+            // si esta oprimido (con "Detener tono" generico, cada rama else
+            // apagaba la nota de los demas ~30 veces por segundo).
+            if (this._heldFreq !== freq) return;
+            this._heldFreq = null;
+            const json = JSON.stringify({
+                command: 'outputsQueue',
+                testValue: [{ command: 'toneStop' }]
+            });
+            await this.peripheral._serial.write(json);
+        } catch (e) {
+            console.error('Error en releaseNote:', e);
+        }
+    }
+
     async stopTone() {
         if (!this.peripheral.isConnected()) return;
         try {
+            this._heldFreq = null; // corta tambien cualquier nota sostenida
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{ command: 'toneStop' }]
