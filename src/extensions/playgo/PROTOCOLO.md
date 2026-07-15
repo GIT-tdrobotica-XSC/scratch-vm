@@ -139,6 +139,14 @@ convierte nota+octava a Hz (temperamento igual, A4=440Hz) y envía el mismo subc
 No hay comando de streaming de audio — el protocolo no lo soporta (JSON por línea,
 no binario). El micrófono solo reporta un nivel agregado (ver telemetría).
 
+**Nota de firmware — bug de audio "frecuencias raras" confirmado y corregido:**
+el MAX98357A, con el pin SD flotante (cableado típico del breakout, mezcla
+`(L+R)/2`), necesita que el firmware envíe I2S en modo **estéreo** con la misma
+muestra duplicada en ambos canales. Configurarlo como `I2S_CHANNEL_FMT_ONLY_LEFT`
+(mono, un solo canal con datos) deja el canal derecho sin definir; el ampli
+mezcla el tono real con esa basura y suena distorsionado/con tono incorrecto.
+Fix: `I2S_CHANNEL_FMT_RIGHT_LEFT` + escribir cada muestra dos veces (L y R).
+
 ### Entradas/Salidas playBlocks y play+
 
 Los módulos playBlocks y play+ comparten los mismos 4 conectores de entrada (IO1-IO4,
