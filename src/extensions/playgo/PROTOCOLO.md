@@ -141,12 +141,29 @@ dibujar sin ese bloque al final ya no actualiza el panel físico.
 
 | Subcomando | Campos | Descripción |
 |---|---|---|
-| `tone` | `freq:Number(Hz)`, `durationMs:Number` | Reproduce un tono simple por el I2S de salida. No bloqueante del lado firmware (debe poder recibir otros comandos mientras suena). |
-| `toneStop` | — | Corta el tono en curso. |
+| `tone` | `freq:Number(Hz)`, `durationMs:Number` | Reproduce un tono simple por el I2S de salida. No bloqueante del lado firmware (debe poder recibir otros comandos mientras suena). `durationMs:0` = sonar indefinidamente (no se auto-apaga), usado por el bloque "Mantener nota" — solo `toneStop` lo corta. |
+| `toneStop` | — | Corta el tono en curso (incluye los sostenidos con `durationMs:0`). |
 
-El bloque "Reproducir nota" (Do/Re/Mi/Fa/Sol/La/Si + octava) es puramente del lado GUI:
-convierte nota+octava a Hz (temperamento igual, A4=440Hz) y envía el mismo subcomando
-`tone` de arriba. El firmware no necesita saber nada de notas musicales.
+Los bloques "Reproducir nota" y "Mantener nota" (Do/Re/Mi/Fa/Sol/La/Si + octava)
+son puramente del lado GUI: convierten nota+octava a Hz (temperamento igual,
+A4=440Hz) y envían el mismo subcomando `tone` de arriba. El firmware no
+necesita saber nada de notas musicales.
+
+**"Mantener nota"** (`holdNote` en blocks.js) es para el patrón "nota constante
+mientras un botón está oprimido": a diferencia de "Reproducir nota", no espera
+ninguna duración — envía `tone` con `durationMs:0` y retorna de inmediato, para
+que un `por siempre: si <botón oprimido> entonces Mantener nota...` pueda
+revisar el botón en cada vuelta sin bloquearse. El firmware no reinicia
+`tonePhase` en cada llamada a `handleTone()`, así que reenviar la misma nota
+mientras ya está sonando (justo lo que pasa al reevaluar el bloque en cada
+vuelta del bucle) no corta ni chasquea el sonido — uso típico:
+```
+por siempre:
+  si <botón A oprimido> entonces
+    Mantener nota Do octava 4
+  si no:
+    Detener tono
+```
 
 **Octavas 1-3 confirmadas inaudibles** en el parlante pequeño de PlayGo (~33-247Hz,
 fuera del rango que reproduce el hardware). El menú `OCTAVE` del bloque se restringió

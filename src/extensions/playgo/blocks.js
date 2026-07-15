@@ -598,6 +598,16 @@ class PlayGo {
                     category: 'Audio'
                 },
                 {
+                    opcode: 'holdNote',
+                    blockType: BlockType.COMMAND,
+                    text: 'Mantener nota [NOTE] octava [OCTAVE]',
+                    arguments: {
+                        NOTE: { type: ArgumentType.STRING, menu: 'musicNotes', defaultValue: 'C' },
+                        OCTAVE: { type: ArgumentType.STRING, menu: 'musicOctaves', defaultValue: '4' }
+                    },
+                    category: 'Audio'
+                },
+                {
                     opcode: 'stopTone',
                     blockType: BlockType.COMMAND,
                     text: 'Detener tono',
@@ -1242,7 +1252,10 @@ class PlayGo {
         if (!this.peripheral.isConnected()) return;
         try {
             const freq = Math.max(20, parseInt(args.FREQ));
-            const durationMs = Math.max(0, parseInt(args.DURATION));
+            // Minimo 1 (no 0): durationMs=0 tiene un significado especial para el
+            // firmware ("mantener sonando indefinidamente", ver holdNote) que no
+            // aplica a este bloque.
+            const durationMs = Math.max(1, parseInt(args.DURATION));
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{ command: 'tone', freq, durationMs }]
@@ -1268,7 +1281,7 @@ class PlayGo {
             const octave = parseInt(args.OCTAVE);
             const semitonesFromA4 = (octave - 4) * 12 + (semitone - 9);
             const freq = Math.round(440 * Math.pow(2, semitonesFromA4 / 12));
-            const durationMs = Math.max(0, parseInt(args.DURATION));
+            const durationMs = Math.max(1, parseInt(args.DURATION));
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{ command: 'tone', freq, durationMs }]
@@ -1279,6 +1292,31 @@ class PlayGo {
             await new Promise(resolve => setTimeout(resolve, durationMs));
         } catch (e) {
             console.error('Error en playNote:', e);
+        }
+    }
+
+    async holdNote(args) {
+        if (!this.peripheral.isConnected()) return;
+        try {
+            const SEMITONES_FROM_C = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+            const semitone = SEMITONES_FROM_C[args.NOTE] ?? 0;
+            const octave = parseInt(args.OCTAVE);
+            const semitonesFromA4 = (octave - 4) * 12 + (semitone - 9);
+            const freq = Math.round(440 * Math.pow(2, semitonesFromA4 / 12));
+            const json = JSON.stringify({
+                // durationMs:0 = "sostener indefinidamente" para el firmware.
+                // A diferencia de playNote, NO se espera nada aca: retorna de
+                // inmediato para que un "por siempre: si boton oprimido..." pueda
+                // revisar el estado del boton en cada vuelta sin quedar bloqueado.
+                // Volver a llamar este bloque con la misma nota mientras suena no
+                // reinicia la onda (el firmware no resetea la fase), asi que es
+                // seguro re-invocarlo en cada iteracion sin que "chasquee".
+                command: 'outputsQueue',
+                testValue: [{ command: 'tone', freq, durationMs: 0 }]
+            });
+            await this.peripheral._serial.write(json);
+        } catch (e) {
+            console.error('Error en holdNote:', e);
         }
     }
 
