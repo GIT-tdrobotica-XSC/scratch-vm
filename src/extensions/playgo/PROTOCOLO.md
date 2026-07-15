@@ -159,6 +159,18 @@ muestra duplicada en ambos canales. Configurarlo como `I2S_CHANNEL_FMT_ONLY_LEFT
 mezcla el tono real con esa basura y suena distorsionado/con tono incorrecto.
 Fix: `I2S_CHANNEL_FMT_RIGHT_LEFT` + escribir cada muestra dos veces (L y R).
 
+**Segundo bug de audio confirmado y corregido (v1.7)** — el anterior no era
+suficiente: seguía sonando "a ruido, ninguna nota reconocible". Causa real:
+`i2s_write()` se llamaba con timeout no bloqueante (`0`). `loop()` genera
+muestras mucho más rápido de lo que se reproducen (~2.9ms por bloque de 128
+muestras); cuando el buffer DMA se llena, un write no bloqueante se descarta
+en silencio, pero el acumulador de fase de la onda (`tonePhase`) igual
+avanzaba como si esas muestras se hubieran reproducido. Eso desincroniza la
+fase del audio realmente emitido, sonando como ruido en vez de un tono limpio
+— coherente con `freq` llegando correcto (verificado en el log TX) pero el
+audio sonando mal de todas formas. Fix: `i2s_write()` con `portMAX_DELAY`
+(bloqueante), igual patrón que ya usaba `silenceI2S()`.
+
 ### Entradas/Salidas playBlocks y play+
 
 Los módulos playBlocks y play+ comparten los mismos 4 conectores de entrada (IO1-IO4,
