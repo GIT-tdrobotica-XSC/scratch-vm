@@ -148,6 +148,11 @@ El bloque "Reproducir nota" (Do/Re/Mi/Fa/Sol/La/Si + octava) es puramente del la
 convierte nota+octava a Hz (temperamento igual, A4=440Hz) y envía el mismo subcomando
 `tone` de arriba. El firmware no necesita saber nada de notas musicales.
 
+**Octavas 1-3 confirmadas inaudibles** en el parlante pequeño de PlayGo (~33-247Hz,
+fuera del rango que reproduce el hardware). El menú `OCTAVE` del bloque se restringió
+a 4-7 (rango confirmado audible desde octava 4). Si al probar se confirma que 7 también
+se degrada o que se puede bajar a 3, ajustar el menú `musicOctaves` en `blocks.js`.
+
 No hay comando de streaming de audio — el protocolo no lo soporta (JSON por línea,
 no binario). El micrófono solo reporta un nivel agregado (ver telemetría).
 
@@ -179,6 +184,14 @@ ninguna nota reconocible". Eran DOS causas combinadas:
    pisaba al anterior — por eso "no suena ninguna escala". Fix: los bloques
    ahora esperan la duración antes de soltar el hilo de Scratch, igual que
    los bloques de música nativos de Scratch.
+
+**Tercer bug de audio confirmado y corregido (v1.9)** — tonos largos (ej.
+5000ms) sonaban entrecortados, "como si se repitiera". Causa: la telemetría
+(cada 100ms) manda un JSON de ~300-400 bytes por `Serial.println()`; el
+buffer TX por defecto del ESP32 es de 256 bytes, así que ese `println()` se
+bloqueaba esperando a transmitir los bytes sobrantes — cortando el audio en
+ese instante, cada 100ms. Fix: `Serial.setTxBufferSize(1024)` antes de
+`Serial.begin()`.
 
 ### Entradas/Salidas playBlocks y play+
 

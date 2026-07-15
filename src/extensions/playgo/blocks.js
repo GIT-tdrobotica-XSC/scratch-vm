@@ -592,7 +592,7 @@ class PlayGo {
                     text: 'Reproducir nota [NOTE] octava [OCTAVE] por [DURATION] ms',
                     arguments: {
                         NOTE: { type: ArgumentType.STRING, menu: 'musicNotes', defaultValue: 'C' },
-                        OCTAVE: { type: ArgumentType.NUMBER, defaultValue: 4 },
+                        OCTAVE: { type: ArgumentType.STRING, menu: 'musicOctaves', defaultValue: '4' },
                         DURATION: { type: ArgumentType.NUMBER, defaultValue: 500 }
                     },
                     category: 'Audio'
@@ -752,6 +752,18 @@ class PlayGo {
                         { text: 'Sol', value: 'G' },
                         { text: 'La', value: 'A' },
                         { text: 'Si', value: 'B' }
+                    ]
+                },
+                musicOctaves: {
+                    acceptReporters: false,
+                    // Octavas 1-3 (~33-247Hz) confirmadas inaudibles en el parlante
+                    // pequeño de PlayGo -- se excluyen del menú para que el bloque
+                    // sea usable de entrada, sin necesidad de adivinar por prueba y error.
+                    items: [
+                        { text: '4 (grave)', value: '4' },
+                        { text: '5', value: '5' },
+                        { text: '6', value: '6' },
+                        { text: '7 (agudo)', value: '7' }
                     ]
                 },
                 pbInputs: {
