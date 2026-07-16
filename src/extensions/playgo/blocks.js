@@ -41,6 +41,13 @@ class PlayGoPeripheral {
         // bloque de Scratch espera a que sensorData.moveId/moveDone lo confirmen.
         this._moveCounter = 0;
 
+        // Caches de deduplicacion (se resetean en cada connect(), porque el
+        // firmware arranca con todo apagado/detenido y un cache viejo no debe
+        // bloquear el primer reenvio legitimo tras reconectar):
+        this._heldFreq = null;       // nota sostenida por holdNote (Hz)
+        this._lastMotorState = null; // "left,right" | "stopped" | null/undefined
+        this._lastRgbJson = null;    // ultimo comando setRGB enviado (JSON literal)
+
         this._runtime.registerPeripheralExtension(extensionId, this);
         this._autoScan();
         window.playGoSerial = this._serial;
@@ -138,6 +145,12 @@ class PlayGoPeripheral {
             }
 
             this._connectedDeviceId = peripheralId;
+
+            // Firmware recien conectado: LEDs apagados, motores detenidos,
+            // sin nota sonando. Limpiar los caches de deduplicacion.
+            this._heldFreq = null;
+            this._lastMotorState = null;
+            this._lastRgbJson = null;
 
             this._setupDataHandler();
 
@@ -335,14 +348,9 @@ class PlayGoPeripheral {
 class PlayGo {
     constructor(runtime, extensionId) {
         this.runtime = runtime;
+        // Los caches de deduplicacion (_heldFreq, _lastMotorState,
+        // _lastRgbJson) viven en el peripheral, que los resetea al conectar.
         this.peripheral = new PlayGoPeripheral(runtime, extensionId);
-        // Frecuencia (Hz) de la nota actualmente sostenida por holdNote, o
-        // null si no hay ninguna. Permite deduplicar reenvios y que
-        // releaseNote suelte solo su propia nota (ver ambos metodos).
-        this._heldFreq = null;
-        // Ultimo estado de motores enviado ("left,right" o "stopped"), para
-        // deduplicar en setMotorSpeeds/stopMotors -- ver nota ahi.
-        this._lastMotorState = null;
     }
 
     getInfo() {
@@ -884,8 +892,8 @@ class PlayGo {
             // queda encolado detras de decenas de duplicados y se siente como
             // lag entre presionar la tecla y que el robot arranque.
             const stateKey = `${left},${right}`;
-            if (this._lastMotorState === stateKey) return;
-            this._lastMotorState = stateKey;
+            if (this.peripheral._lastMotorState === stateKey) return;
+            this.peripheral._lastMotorState = stateKey;
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{ command: 'setMotorSpeed', left, right }]
@@ -902,8 +910,8 @@ class PlayGo {
             // Misma deduplicacion que setMotorSpeeds -- la rama "si no" de un
             // por-siempre reenvia stopMotors en cada vuelta mientras la tecla
             // esta suelta.
-            if (this._lastMotorState === 'stopped') return;
-            this._lastMotorState = 'stopped';
+            if (this.peripheral._lastMotorState === 'stopped') return;
+            this.peripheral._lastMotorState = 'stopped';
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{ command: 'stopMotors' }]
@@ -940,7 +948,7 @@ class PlayGo {
             // desactualizado, invalidarlo para que el proximo comando de
             // velocidad se envie siempre (aunque coincida con el ultimo
             // valor cacheado antes de este movimiento).
-            this._lastMotorState = undefined;
+            this.peripheral._lastMotorState = undefined;
         } catch (e) {
             console.error('Error en moveDistanceCm:', e);
         }
@@ -968,7 +976,7 @@ class PlayGo {
             const estimatedMs = Math.min(20000, Math.max(1500,
                 (Math.abs(angleDeg) / Math.max(10, Math.abs(speed))) * 2500));
             await this.peripheral._waitForMoveComplete(moveId, estimatedMs + 3000);
-            this._lastMotorState = undefined; // ver nota en moveDistanceCm
+            this.peripheral._lastMotorState = undefined; // ver nota en moveDistanceCm
         } catch (e) {
             console.error('Error en turnAngleDeg:', e);
         }
@@ -995,7 +1003,7 @@ class PlayGo {
             const estimatedMs = Math.min(20000, Math.max(1500,
                 (Math.abs(revolutions) / Math.max(10, Math.abs(speed))) * 4000));
             await this.peripheral._waitForMoveComplete(moveId, estimatedMs + 3000);
-            this._lastMotorState = undefined; // ver nota en moveDistanceCm
+            this.peripheral._lastMotorState = undefined; // ver nota en moveDistanceCm
         } catch (e) {
             console.error('Error en turnWheelRevolutions:', e);
         }
@@ -1047,6 +1055,17 @@ class PlayGo {
 
     // ── RGB ──────────────────────────────────────────────────────────────────
 
+    // Deduplicacion RGB: dentro de un "por siempre" los bloques de color se
+    // reevaluan ~30-60 veces/segundo reenviando el mismo comando (visto en
+    // consola: 99 setRGB identicos seguidos). Ese flood satura el transporte
+    // (critico en BLE) y contribuia a las desconexiones inesperadas. Solo se
+    // reenvia si el comando difiere del ultimo enviado.
+    async _sendRgb(json) {
+        if (this.peripheral._lastRgbJson === json) return;
+        this.peripheral._lastRgbJson = json;
+        await this.peripheral.send(json);
+    }
+
     async setRGBColor(args) {
         if (!this.peripheral.isConnected()) return;
         try {
@@ -1058,7 +1077,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'setRGB', led, r, g, b }]
             });
-            await this.peripheral.send(json);
+            await this._sendRgb(json);
         } catch (e) {
             console.error('Error en setRGBColor:', e);
         }
@@ -1076,7 +1095,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'setRGB', led, r, g, b }]
             });
-            await this.peripheral.send(json);
+            await this._sendRgb(json);
         } catch (e) {
             console.error('Error en setRGBColorHex:', e);
         }
@@ -1101,7 +1120,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'setRGB', led, r: color.r, g: color.g, b: color.b }]
             });
-            await this.peripheral.send(json);
+            await this._sendRgb(json);
         } catch (e) {
             console.error('Error en setRGBPreset:', e);
         }
@@ -1115,7 +1134,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'setRGB', led, r: 0, g: 0, b: 0 }]
             });
-            await this.peripheral.send(json);
+            await this._sendRgb(json);
         } catch (e) {
             console.error('Error en rgbOff:', e);
         }
@@ -1128,7 +1147,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'setRGB', r: 0, g: 0, b: 0 }]
             });
-            await this.peripheral.send(json);
+            await this._sendRgb(json);
         } catch (e) {
             console.error('Error en allRGBOff:', e);
         }
@@ -1145,7 +1164,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'setRGB', r, g, b }]
             });
-            await this.peripheral.send(json);
+            await this._sendRgb(json);
         } catch (e) {
             console.error('Error en setAllRGB:', e);
         }
@@ -1350,7 +1369,7 @@ class PlayGo {
             // firmware ("mantener sonando indefinidamente", ver holdNote) que no
             // aplica a este bloque.
             const durationMs = Math.max(1, parseInt(args.DURATION));
-            this._heldFreq = null; // este tono con duracion pisa cualquier nota sostenida
+            this.peripheral._heldFreq = null; // este tono con duracion pisa cualquier nota sostenida
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{ command: 'tone', freq, durationMs }]
@@ -1371,7 +1390,7 @@ class PlayGo {
         try {
             const freq = this._noteToFreq(args.NOTE, args.OCTAVE);
             const durationMs = Math.max(1, parseInt(args.DURATION));
-            this._heldFreq = null; // esta nota con duracion pisa cualquier nota sostenida
+            this.peripheral._heldFreq = null; // esta nota con duracion pisa cualquier nota sostenida
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{ command: 'tone', freq, durationMs }]
@@ -1387,7 +1406,7 @@ class PlayGo {
 
     async holdNote(args) {
         if (!this.peripheral.isConnected()) {
-            this._heldFreq = null;
+            this.peripheral._heldFreq = null;
             return;
         }
         try {
@@ -1396,8 +1415,8 @@ class PlayGo {
             // reenviar nada. En el patron tipico ("por siempre: si boton
             // oprimido -> mantener nota") este bloque se reevalua ~30 veces
             // por segundo; sin esto se satura el serial con comandos identicos.
-            if (this._heldFreq === freq) return;
-            this._heldFreq = freq;
+            if (this.peripheral._heldFreq === freq) return;
+            this.peripheral._heldFreq = freq;
             const json = JSON.stringify({
                 // durationMs:0 = "sostener indefinidamente" para el firmware:
                 // suena hasta que llegue un toneStop. A diferencia de playNote,
@@ -1422,8 +1441,8 @@ class PlayGo {
             // oprimido suelta solo su propia nota, sin matar la del boton que
             // si esta oprimido (con "Detener tono" generico, cada rama else
             // apagaba la nota de los demas ~30 veces por segundo).
-            if (this._heldFreq !== freq) return;
-            this._heldFreq = null;
+            if (this.peripheral._heldFreq !== freq) return;
+            this.peripheral._heldFreq = null;
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{ command: 'toneStop' }]
@@ -1437,7 +1456,7 @@ class PlayGo {
     async stopTone() {
         if (!this.peripheral.isConnected()) return;
         try {
-            this._heldFreq = null; // corta tambien cualquier nota sostenida
+            this.peripheral._heldFreq = null; // corta tambien cualquier nota sostenida
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{ command: 'toneStop' }]

@@ -55,6 +55,17 @@ Detalles técnicos (implementados en `playgo-ble.js` GUI / NimBLE firmware):
 - Latencia: el firmware solicita en `onConnect` un intervalo de conexión de
   7.5-15ms (`updateConnParams`, default de Windows ~30-60ms) y supervision
   timeout de 4s para tolerar microcortes de radio sin caer el enlace.
+- **Desconexiones inesperadas bajo ráfagas (corregido, fw v2.0.4 + GUI):** el
+  `onWrite` de NimBLE corre en la tarea del stack BLE; parsear y ejecutar ahí
+  cada comando (incluyendo hardware lento como el I2C del OLED) bloqueaba esa
+  tarea bajo flood de comandos → el stack no atendía el enlace → timeout de
+  supervisión → desconexión. El firmware ahora solo encola bytes en `onWrite`
+  (ring buffer con critical section) y los procesa en `loop()` (`bleRxTick`),
+  igual que el serial USB. Del lado GUI: los bloques RGB se deduplican (mismo
+  esquema que motores/notas — un "por siempre" reenviaba el mismo `setRGB`
+  ~30-60 veces/segundo) y las escrituras BLE de scripts concurrentes se
+  serializan en una cadena de promesas (sin eso, los trozos de 20 bytes de dos
+  scripts simultáneos se intercalaban corrompiendo ambas líneas JSON).
 - Ambos transportes conviven: el firmware procesa comandos de cualquiera de los dos
   y emite la telemetría por ambos. Al desconectarse el BLE, vuelve a anunciarse solo.
 - **La actualización de firmware sigue requiriendo USB** (esptool necesita el puerto

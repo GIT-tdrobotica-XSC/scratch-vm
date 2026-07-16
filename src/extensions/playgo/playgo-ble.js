@@ -24,6 +24,11 @@ class PlayGoBLE {
         this.connected = false;
         this.buffer = '';
         this._lastRxTime = null;
+        // Cadena de escrituras pendientes: dos scripts de Scratch corriendo a
+        // la vez (ej. motores por teclado + notas por boton) pueden llamar
+        // write() concurrentemente, y sin serializar sus trozos de 20 bytes se
+        // intercalarian, corrompiendo ambas lineas JSON en el firmware.
+        this._writeChain = Promise.resolve();
     }
 
     /**
@@ -120,12 +125,23 @@ class PlayGoBLE {
         }
     }
 
-    async write(msg) {
+    write(msg) {
         if (!this.rxChar || !this.connected) {
             console.error('[PlayGo BLE] No hay conexión activa');
-            return;
+            return Promise.resolve();
         }
 
+        // Encolar detras de cualquier escritura en curso (ver _writeChain en el
+        // constructor). El catch corta la propagacion del error a las escrituras
+        // siguientes de la cadena; _writeMsg ya lo logueo.
+        this._writeChain = this._writeChain
+            .then(() => this._writeMsg(msg))
+            .catch(() => {});
+        return this._writeChain;
+    }
+
+    async _writeMsg(msg) {
+        if (!this.rxChar || !this.connected) return;
         try {
             const data = new TextEncoder().encode(msg + '\n');
             // Trocear a 20 bytes: el payload garantizado con el MTU minimo BLE
