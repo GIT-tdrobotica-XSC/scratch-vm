@@ -1,6 +1,7 @@
 const BlockType = require('../../extension-support/block-type');
 const ArgumentType = require('../../extension-support/argument-type');
 const PlayGoSerial = require('./playgo-serial');
+const PlayGoBLE = require('./playgo-ble');
 
 class PlayGoPeripheral {
     constructor(runtime, extensionId) {
@@ -8,6 +9,13 @@ class PlayGoPeripheral {
         this._runtime = runtime;
         this._extensionId = extensionId;
         this._serial = new PlayGoSerial();
+        // Transporte alternativo por Bluetooth LE (Web Bluetooth). El ESP32-S3
+        // no tiene Bluetooth Classic/SPP, asi que no puede aparecer como COM
+        // virtual del sistema -- se habla BLE directo desde el navegador.
+        this._ble = new PlayGoBLE();
+        // Transporte actualmente conectado (this._serial o this._ble). Los
+        // bloques envian a traves de send(), que enruta al activo.
+        this._activeTransport = null;
         this.devices = [];
         this._scanning = false;
         this._connectedDeviceId = null;
@@ -63,39 +71,33 @@ class PlayGoPeripheral {
         }
 
         this._scanning = true;
-        console.log('Solicitando nuevo puerto...');
 
         try {
-            const newPort = await navigator.serial.requestPort();
-
-            // Siempre reemplazar la lista con el puerto recién seleccionado.
-            // Usar push+includes causaba race conditions: forget() en disconnect()
-            // hacía que requestPort() retornara un objeto nuevo en el siguiente scan,
-            // que no coincidía por referencia con el anterior → duplicado.
-            this.devices = [newPort];
+            // El "escaneo" lista las dos formas de conectar; el picker nativo
+            // del navegador (puertos seriales o dispositivos Bluetooth) se abre
+            // recien al hacer click en una opcion (connect()), que tambien es
+            // un gesto de usuario valido para requestPort()/requestDevice().
+            this.devices = [{ type: 'usb', name: 'PlayGo por USB' }];
+            if ('bluetooth' in navigator) {
+                this.devices.push({ type: 'ble', name: 'PlayGo por Bluetooth' });
+            }
 
             this._runtime.emit(
                 this._runtime.constructor.PERIPHERAL_LIST_UPDATE,
                 this.getPeripheralDeviceList()
             );
-        } catch (e) {
-            if (e.name === 'NotFoundError') {
-                console.log('Usuario canceló');
-            } else {
-                console.error('Error en scan:', e);
-            }
         } finally {
             this._scanning = false;
         }
     }
 
     getPeripheralDeviceList() {
-        return this.devices.map((port, index) => {
+        return this.devices.map((entry, index) => {
             const deviceId = `playgo_${index}`;
             return {
                 id: deviceId,
                 peripheralId: deviceId,
-                name: this.getPeripheralName(deviceId),
+                name: entry.name,
                 rssi: -50,
                 connected: this._connectedDeviceId === deviceId
             };
@@ -106,22 +108,35 @@ class PlayGoPeripheral {
         console.log('Intentando conectar a:', peripheralId);
 
         const index = parseInt(peripheralId.split('_')[1]);
-        const port = this.devices[index];
+        const entry = this.devices[index];
 
-        if (!port) {
-            console.error('Puerto no encontrado para', peripheralId);
+        if (!entry) {
+            console.error('Opción de conexión no encontrada para', peripheralId);
             return;
         }
 
         try {
-            await this._serial.connect(port);
+            if (entry.type === 'ble') {
+                // El picker de Bluetooth del navegador se abre dentro de connect().
+                await this._ble.connect();
+                this._activeTransport = this._ble;
+            } else {
+                // Abrir el picker de puertos seriales recien aqui (antes se abria
+                // en scan(); sigue siendo un gesto de usuario, ahora el del click
+                // en la opcion "PlayGo por USB").
+                const port = await navigator.serial.requestPort();
+                await this._serial.connect(port);
+                this._activeTransport = this._serial;
+            }
+
             this._connectedDeviceId = peripheralId;
 
             this._setupDataHandler();
 
-            this._serial.onDisconnect = () => {
+            this._activeTransport.onDisconnect = () => {
                 console.log('Desconexión inesperada detectada');
                 this._connectedDeviceId = null;
+                this._activeTransport = null;
                 this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
             };
 
@@ -129,8 +144,14 @@ class PlayGoPeripheral {
 
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTED);
         } catch (e) {
-            console.error('Error conectando:', e);
+            if (e && e.name === 'NotFoundError') {
+                // Usuario canceló el picker: no es un error de conexión.
+                console.log('Usuario canceló la selección');
+            } else {
+                console.error('Error conectando:', e);
+            }
             this._connectedDeviceId = null;
+            this._activeTransport = null;
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_REQUEST_ERROR, {
                 message: `Error: ${e.message}`,
                 extensionId: this._extensionId
@@ -138,10 +159,20 @@ class PlayGoPeripheral {
         }
     }
 
-    _setupDataHandler() {
-        if (!this._serial) return;
+    /**
+     * Envía una línea de protocolo por el transporte activo (USB o BLE).
+     * Todos los bloques envían a través de este método.
+     */
+    async send(msg) {
+        const transport = this._activeTransport || this._serial;
+        return transport.write(msg);
+    }
 
-        this._serial.onData = (data) => {
+    _setupDataHandler() {
+        const transport = this._activeTransport || this._serial;
+        if (!transport) return;
+
+        transport.onData = (data) => {
             if (data.inputs) {
                 Object.keys(data.inputs).forEach(key => {
                     this.sensorData[key] = data.inputs[key];
@@ -186,9 +217,12 @@ class PlayGoPeripheral {
             });
             this.sensorData.moveDone = 1;
 
-            if (this._serial) {
+            if (this._activeTransport) {
+                await this._activeTransport.disconnect();
+            } else if (this._serial) {
                 await this._serial.disconnect();
             }
+            this._activeTransport = null;
 
             this._connectedDeviceId = null;
 
@@ -220,7 +254,8 @@ class PlayGoPeripheral {
     }
 
     isConnected() {
-        return this._serial && this._serial.connected;
+        const transport = this._activeTransport;
+        return !!(transport && transport.connected);
     }
 
     getPeripheralDeviceIds() {
@@ -229,11 +264,13 @@ class PlayGoPeripheral {
 
     /**
      * 🔐 Reconecta el periférico después de un flasheo de firmware.
+     * Solo aplica al transporte USB: el flasheo requiere el puerto serial.
      */
     async reconnect(port) {
         if (!this._serial || !port) return;
         try {
             await this._serial.claimPort(port);
+            this._activeTransport = this._serial;
             this._connectedDeviceId = this._connectedDeviceId || 'playgo_0';
             this._setupDataHandler();
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTED);
@@ -249,7 +286,8 @@ class PlayGoPeripheral {
 
     getPeripheralName(deviceId) {
         const index = parseInt(deviceId.split('_')[1]);
-        return `PlayGo Device #${index + 1}`;
+        const entry = this.devices[index];
+        return (entry && entry.name) || `PlayGo Device #${index + 1}`;
     }
 
     // ── Movimiento asíncrono (avanzar/girar por encoder) ─────────────────────
@@ -831,7 +869,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'setMotorSpeed', left, right }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en setMotorSpeeds:', e);
         }
@@ -844,7 +882,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'stopMotors' }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en stopMotors:', e);
         }
@@ -866,7 +904,7 @@ class PlayGo {
                     moveId, distanceCm, speed, wheelDiameterCm, pulsesPerRev
                 }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
 
             const estimatedMs = Math.min(20000, Math.max(1500,
                 (Math.abs(distanceCm) / Math.max(10, Math.abs(speed))) * 3000));
@@ -893,7 +931,7 @@ class PlayGo {
                     moveId, angleDeg, speed, wheelDiameterCm, trackWidthCm, pulsesPerRev
                 }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
 
             const estimatedMs = Math.min(20000, Math.max(1500,
                 (Math.abs(angleDeg) / Math.max(10, Math.abs(speed))) * 2500));
@@ -919,7 +957,7 @@ class PlayGo {
                     moveId, wheel, revolutions, speed, pulsesPerRev
                 }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
 
             const estimatedMs = Math.min(20000, Math.max(1500,
                 (Math.abs(revolutions) / Math.max(10, Math.abs(speed))) * 4000));
@@ -936,7 +974,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'resetEncoders' }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en resetEncoders:', e);
         }
@@ -960,7 +998,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'servoWrite', pin: gpio, angle }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en setServoPlayGo:', e);
         }
@@ -986,7 +1024,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'setRGB', led, r, g, b }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en setRGBColor:', e);
         }
@@ -1004,7 +1042,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'setRGB', led, r, g, b }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en setRGBColorHex:', e);
         }
@@ -1029,7 +1067,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'setRGB', led, r: color.r, g: color.g, b: color.b }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en setRGBPreset:', e);
         }
@@ -1043,7 +1081,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'setRGB', led, r: 0, g: 0, b: 0 }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en rgbOff:', e);
         }
@@ -1056,7 +1094,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'setRGB', r: 0, g: 0, b: 0 }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en allRGBOff:', e);
         }
@@ -1073,7 +1111,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'setRGB', r, g, b }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en setAllRGB:', e);
         }
@@ -1088,7 +1126,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'oledText', text: args.TEXT, size: parseInt(args.SIZE) }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en oledText:', e);
         }
@@ -1106,7 +1144,7 @@ class PlayGo {
                     value: parseInt(args.VALUE)
                 }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en oledNumber:', e);
         }
@@ -1119,7 +1157,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'oledClear' }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en oledClear:', e);
         }
@@ -1132,7 +1170,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'oledLine', line: parseInt(args.LINE), text: args.TEXT }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en oledLine:', e);
         }
@@ -1151,7 +1189,7 @@ class PlayGo {
                     size: parseInt(args.SIZE)
                 }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en oledTextXY:', e);
         }
@@ -1164,7 +1202,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'oledEmoji', emoji: args.EMOJI, x: parseInt(args.X), y: parseInt(args.Y) }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en oledEmoji:', e);
         }
@@ -1181,7 +1219,7 @@ class PlayGo {
                     x1: parseInt(args.X1), y1: parseInt(args.Y1)
                 }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en oledDrawLine:', e);
         }
@@ -1198,7 +1236,7 @@ class PlayGo {
                     w: parseInt(args.W), h: parseInt(args.H)
                 }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en oledDrawRect:', e);
         }
@@ -1215,7 +1253,7 @@ class PlayGo {
                     w: parseInt(args.W), h: parseInt(args.H)
                 }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en oledFillRect:', e);
         }
@@ -1228,7 +1266,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'oledDrawCircle', x: parseInt(args.X), y: parseInt(args.Y), r: parseInt(args.R) }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en oledDrawCircle:', e);
         }
@@ -1241,7 +1279,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'oledDrawPixel', x: parseInt(args.X), y: parseInt(args.Y) }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en oledDrawPixel:', e);
         }
@@ -1254,7 +1292,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'oledDisplay' }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en oledDisplay:', e);
         }
@@ -1283,7 +1321,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'tone', freq, durationMs }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
             // Esperar la duración antes de soltar el hilo de Scratch: sin esto,
             // bloques de tono consecutivos llegan al firmware en milisegundos y
             // cada uno pisa al anterior (se oye un barrido de glitches en vez
@@ -1304,7 +1342,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'tone', freq, durationMs }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
             // Igual que playTone: esperar la duración para que una secuencia de
             // notas (Do, Re, Mi...) suene como melodía y no se pisen entre sí.
             await new Promise(resolve => setTimeout(resolve, durationMs));
@@ -1334,7 +1372,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'tone', freq, durationMs: 0 }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en holdNote:', e);
         }
@@ -1356,7 +1394,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'toneStop' }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en releaseNote:', e);
         }
@@ -1370,7 +1408,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'toneStop' }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en stopTone:', e);
         }
@@ -1391,7 +1429,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'setIOMode', mode: args.MODE }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en setIOMode:', e);
         }
@@ -1417,7 +1455,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'digitalWrite', gpio, value }]
             });
-            await this.peripheral._serial.write(json);
+            await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en writeDigitalPB:', e);
         }

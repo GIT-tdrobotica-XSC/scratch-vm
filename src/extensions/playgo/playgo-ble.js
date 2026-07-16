@@ -1,0 +1,151 @@
+/**
+ * Transporte Web Bluetooth (BLE) para PlayGo.
+ *
+ * El ESP32-S3 NO tiene Bluetooth Classic (BR/EDR), solo BLE — por lo tanto no
+ * puede exponer un COM virtual por SPP como los modulos HC-05. En su lugar, el
+ * firmware publica un servicio Nordic UART (NUS) y este transporte habla con el
+ * via Web Bluetooth (Chrome/Edge). Mismo protocolo JSON-por-linea que el USB:
+ * la GUI escribe en la caracteristica RX y recibe telemetria por notificaciones
+ * de la caracteristica TX. Interfaz identica a PlayGoSerial (connect/disconnect/
+ * write/onData/onDisconnect) para que PlayGoPeripheral pueda usar cualquiera de
+ * los dos transportes sin cambiar los bloques.
+ */
+
+// UUIDs estandar del Nordic UART Service. Web Bluetooth exige minusculas.
+const NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // GUI -> placa (write)
+const NUS_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // placa -> GUI (notify)
+
+class PlayGoBLE {
+    constructor() {
+        this.device = null;
+        this.rxChar = null;
+        this.txChar = null;
+        this.connected = false;
+        this.buffer = '';
+        this._lastRxTime = null;
+    }
+
+    /**
+     * Abre el picker nativo de Bluetooth del navegador y conecta al dispositivo
+     * elegido. Debe llamarse desde un gesto del usuario (click), igual que
+     * navigator.serial.requestPort().
+     */
+    async connect() {
+        if (!('bluetooth' in navigator)) {
+            throw new Error('Este navegador no soporta Web Bluetooth');
+        }
+
+        const device = await navigator.bluetooth.requestDevice({
+            // Filtrar por el servicio NUS que anuncia el firmware: solo aparecen
+            // placas PlayGo (u otros dispositivos NUS), no todo el entorno BLE.
+            filters: [{ services: [NUS_SERVICE] }]
+        });
+
+        this.device = device;
+        device.addEventListener('gattserverdisconnected', () => this._handleUnexpectedDisconnect());
+
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(NUS_SERVICE);
+        this.rxChar = await service.getCharacteristic(NUS_RX);
+        this.txChar = await service.getCharacteristic(NUS_TX);
+
+        await this.txChar.startNotifications();
+        this.txChar.addEventListener('characteristicvaluechanged', e => {
+            const text = new TextDecoder().decode(e.target.value);
+            this.handleIncoming(text);
+        });
+
+        this.buffer = '';
+        this.connected = true;
+        console.log('[PlayGo BLE] Conectado a', device.name || '(sin nombre)');
+    }
+
+    _handleUnexpectedDisconnect() {
+        if (!this.connected) return;
+        console.log('[PlayGo BLE] Dispositivo desconectado');
+        this.connected = false;
+        this.rxChar = null;
+        this.txChar = null;
+        if (this.onDisconnect) {
+            this.onDisconnect();
+        }
+    }
+
+    async disconnect() {
+        this.connected = false;
+        this.rxChar = null;
+        this.txChar = null;
+        try {
+            if (this.device && this.device.gatt && this.device.gatt.connected) {
+                this.device.gatt.disconnect();
+            }
+        } catch (e) { /* ignorar */ }
+        this.device = null;
+        this.buffer = '';
+        console.log('[PlayGo BLE] Desconectado');
+    }
+
+    // Mismo framing por lineas que PlayGoSerial: las notificaciones BLE llegan
+    // en trozos arbitrarios (limitados por el MTU), el '\n' delimita mensajes.
+    handleIncoming(text) {
+        this.buffer += text;
+
+        const lines = this.buffer.split('\n');
+        this.buffer = lines.pop() || '';
+
+        for (let line of lines) {
+            line = line.trim();
+            if (!line) continue;
+
+            if (line.startsWith('{') && line.endsWith('}')) {
+                try {
+                    const data = JSON.parse(line);
+                    this._lastRxTime = Date.now();
+                    if (this.onData) {
+                        this.onData(data);
+                    }
+                } catch (err) {
+                    if (line.includes('"inputs"') || line.includes('"ok"')) {
+                        console.warn('[PlayGo BLE] JSON inválido:', line.substring(0, 60));
+                    }
+                }
+            }
+        }
+
+        if (this.buffer.length > 1024) {
+            console.warn('[PlayGo BLE] Buffer muy grande, limpiando');
+            const lastBrace = this.buffer.lastIndexOf('{');
+            this.buffer = lastBrace !== -1 ? this.buffer.substring(lastBrace) : '';
+        }
+    }
+
+    async write(msg) {
+        if (!this.rxChar || !this.connected) {
+            console.error('[PlayGo BLE] No hay conexión activa');
+            return;
+        }
+
+        try {
+            const data = new TextEncoder().encode(msg + '\n');
+            // Trocear a 20 bytes: el payload garantizado con el MTU minimo BLE
+            // (23-3). El firmware re-ensambla por el delimitador '\n', asi que
+            // la fragmentacion es transparente para el protocolo.
+            const CHUNK = 20;
+            for (let i = 0; i < data.length; i += CHUNK) {
+                const slice = data.slice(i, i + CHUNK);
+                if (this.rxChar.writeValueWithoutResponse) {
+                    await this.rxChar.writeValueWithoutResponse(slice);
+                } else {
+                    await this.rxChar.writeValue(slice);
+                }
+            }
+            console.log('[PlayGo BLE] TX:', msg);
+        } catch (err) {
+            console.error('[PlayGo BLE] Error enviando datos:', err);
+            throw err;
+        }
+    }
+}
+
+module.exports = PlayGoBLE;

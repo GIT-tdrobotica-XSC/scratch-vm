@@ -23,6 +23,36 @@ replica intencionalmente para reutilizar el mismo enfoque probado.
   confirmar en la placa real cuál de los dos es el que efectivamente usa el navegador
   para Web Serial.
 
+### Bluetooth LE (v2.0)
+
+Además del USB, el firmware expone el **mismo protocolo JSON-por-línea via BLE**
+(servicio **Nordic UART / NUS**), y la GUI se conecta con **Web Bluetooth** (Chrome/
+Edge). En el modal de conexión aparecen dos opciones: "PlayGo por USB" y "PlayGo por
+Bluetooth"; el picker nativo del navegador se abre al elegir una.
+
+**Por qué BLE y no un COM virtual Bluetooth:** el COM virtual del sistema lo provee
+el perfil SPP, que corre sobre **Bluetooth Classic (BR/EDR)** — y el **ESP32-S3 no
+tiene Bluetooth Classic, solo BLE**. No existe firmware que haga aparecer la PlayGo
+como puerto COM Bluetooth en Windows; la alternativa correcta sin instalar nada en
+los PCs es hablar BLE directo desde el navegador.
+
+Detalles técnicos (implementados en `playgo-ble.js` GUI / NimBLE firmware):
+- UUIDs estándar del NUS: servicio `6E400001-...`, RX `6E400002-...` (GUI→placa,
+  write), TX `6E400003-...` (placa→GUI, notify).
+- La placa se anuncia como **"PlayGo"** e incluye el UUID del servicio en el
+  advertising (la GUI filtra por él: solo aparecen placas PlayGo en el picker).
+- Fragmentación: la GUI trocea sus writes a 20 bytes (payload garantizado con
+  cualquier MTU); el firmware pide MTU 517 y trocea la telemetría al MTU negociado
+  (con Chrome/Windows la telemetría completa suele caber en 1 notificación). Ambos
+  lados re-ensamblan por el delimitador `\n`, así que la fragmentación es
+  transparente para el protocolo.
+- Ambos transportes conviven: el firmware procesa comandos de cualquiera de los dos
+  y emite la telemetría por ambos. Al desconectarse el BLE, vuelve a anunciarse solo.
+- **La actualización de firmware sigue requiriendo USB** (esptool necesita el puerto
+  serial físico) — no se puede flashear por BLE.
+- Requiere en `platformio.ini`: `h2zero/NimBLE-Arduino @ ^1.4` (y si el binario no
+  cabe en la partición por defecto: `board_build.partitions = huge_app.csv`).
+
 ## Framing
 
 - Cada mensaje es **un JSON completo por línea**, terminado en `\n`.
