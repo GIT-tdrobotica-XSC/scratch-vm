@@ -82,10 +82,18 @@ class PlayGoPeripheral {
                 this.devices.push({ type: 'ble', name: 'PlayGo por Bluetooth' });
             }
 
-            this._runtime.emit(
-                this._runtime.constructor.PERIPHERAL_LIST_UPDATE,
-                this.getPeripheralDeviceList()
-            );
+            // Emitir DIFERIDO, no sincrono: el modal de conexion de la GUI llama
+            // scanForPeripheral() ANTES de registrar su listener de
+            // PERIPHERAL_LIST_UPDATE (scanning-step.jsx, componentDidMount), asi
+            // que un emit sincrono se dispara cuando nadie escucha y la lista
+            // queda vacia. Antes no se notaba porque el picker nativo demoraba
+            // el emit hasta que el usuario elegia el puerto.
+            setTimeout(() => {
+                this._runtime.emit(
+                    this._runtime.constructor.PERIPHERAL_LIST_UPDATE,
+                    this.getPeripheralDeviceList()
+                );
+            }, 100);
         } finally {
             this._scanning = false;
         }
