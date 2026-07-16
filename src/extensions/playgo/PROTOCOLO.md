@@ -105,6 +105,19 @@ contador de pulsos en la interrupción), no leyendo un segundo canal.
 | `resetEncoders` | — | Pone en 0 los contadores acumulados `encoderLeft`/`encoderRight` de la telemetría. |
 | `servoWrite` | `pin:Int(11,12,13,14)`, `angle:Int(0-180)` | Mueve el servo conectado en el puerto especial A/B/C/D (= GPIO 11/12/13/14 respectivamente, serigrafía de la placa). Mismo GPIO que `digitalWrite` de playBlocks/play+ — el firmware decide el modo según cuál de los dos comandos reciba para ese pin. |
 
+**Deduplicación del lado GUI (`setMotorSpeed`/`stopMotors`)** — patrón típico
+"control por teclado": `por siempre: si <tecla> entonces Motores... si no
+Detener motores` reevalúa el bloque ~30-60 veces/segundo. Sin deduplicar, cada
+vuelta reenvía el mismo comando aunque el estado no haya cambiado, saturando
+el transporte (sobre todo BLE, con latencia por escritura) — el comando real
+(al presionar/soltar la tecla) queda encolado detrás de decenas de duplicados,
+sintiéndose como lag entre la tecla y que el robot reaccione. `blocks.js`
+ahora cachea el último estado enviado (`_lastMotorState`) y solo reenvía si
+cambió. Los tres comandos de movimiento (`moveDistance`/`turnAngle`/
+`turnWheelRevs`) invalidan ese caché al terminar, porque el firmware frena los
+motores por su cuenta y la GUI no debe asumir que el estado sigue siendo el de
+antes del movimiento.
+
 **Semántica de `moveId`/`moveDone`** (crítico): los tres comandos de movimiento
 (`moveDistance`, `turnAngle`, `turnWheelRevs`) son de **larga duración**. El lado
 Scratch no bloquea esperando una respuesta directa — en cambio, hace polling sobre la

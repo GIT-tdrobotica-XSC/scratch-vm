@@ -340,6 +340,9 @@ class PlayGo {
         // null si no hay ninguna. Permite deduplicar reenvios y que
         // releaseNote suelte solo su propia nota (ver ambos metodos).
         this._heldFreq = null;
+        // Ultimo estado de motores enviado ("left,right" o "stopped"), para
+        // deduplicar en setMotorSpeeds/stopMotors -- ver nota ahi.
+        this._lastMotorState = null;
     }
 
     getInfo() {
@@ -873,6 +876,16 @@ class PlayGo {
         try {
             const left = Math.max(-100, Math.min(100, parseInt(args.LEFT)));
             const right = Math.max(-100, Math.min(100, parseInt(args.RIGHT)));
+            // Deduplicacion: en un patron "por siempre: si <tecla> entonces
+            // Motores..." este bloque se reevalua ~30-60 veces/segundo mientras
+            // la tecla sigue oprimida. Sin esto cada vuelta reenvia el mismo
+            // comando, saturando el transporte (sobre todo BLE, con latencia
+            // por escritura) -- el comando REAL (al soltar/oprimir la tecla)
+            // queda encolado detras de decenas de duplicados y se siente como
+            // lag entre presionar la tecla y que el robot arranque.
+            const stateKey = `${left},${right}`;
+            if (this._lastMotorState === stateKey) return;
+            this._lastMotorState = stateKey;
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{ command: 'setMotorSpeed', left, right }]
@@ -886,6 +899,11 @@ class PlayGo {
     async stopMotors() {
         if (!this.peripheral.isConnected()) return;
         try {
+            // Misma deduplicacion que setMotorSpeeds -- la rama "si no" de un
+            // por-siempre reenvia stopMotors en cada vuelta mientras la tecla
+            // esta suelta.
+            if (this._lastMotorState === 'stopped') return;
+            this._lastMotorState = 'stopped';
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{ command: 'stopMotors' }]
@@ -917,6 +935,12 @@ class PlayGo {
             const estimatedMs = Math.min(20000, Math.max(1500,
                 (Math.abs(distanceCm) / Math.max(10, Math.abs(speed))) * 3000));
             await this.peripheral._waitForMoveComplete(moveId, estimatedMs + 3000);
+            // El firmware frena los motores solo al terminar el movimiento; el
+            // cache de deduplicacion de setMotorSpeeds/stopMotors queda
+            // desactualizado, invalidarlo para que el proximo comando de
+            // velocidad se envie siempre (aunque coincida con el ultimo
+            // valor cacheado antes de este movimiento).
+            this._lastMotorState = undefined;
         } catch (e) {
             console.error('Error en moveDistanceCm:', e);
         }
@@ -944,6 +968,7 @@ class PlayGo {
             const estimatedMs = Math.min(20000, Math.max(1500,
                 (Math.abs(angleDeg) / Math.max(10, Math.abs(speed))) * 2500));
             await this.peripheral._waitForMoveComplete(moveId, estimatedMs + 3000);
+            this._lastMotorState = undefined; // ver nota en moveDistanceCm
         } catch (e) {
             console.error('Error en turnAngleDeg:', e);
         }
@@ -970,6 +995,7 @@ class PlayGo {
             const estimatedMs = Math.min(20000, Math.max(1500,
                 (Math.abs(revolutions) / Math.max(10, Math.abs(speed))) * 4000));
             await this.peripheral._waitForMoveComplete(moveId, estimatedMs + 3000);
+            this._lastMotorState = undefined; // ver nota en moveDistanceCm
         } catch (e) {
             console.error('Error en turnWheelRevolutions:', e);
         }
