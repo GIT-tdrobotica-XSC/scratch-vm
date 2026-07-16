@@ -52,9 +52,22 @@ Detalles técnicos (implementados en `playgo-ble.js` GUI / NimBLE firmware):
   exceda el MTU real, y la telemetría llegaba truncada/mezclada ("JSON inválido"
   en consola; los bloques de movimiento quedaban colgados en rojo hasta su
   timeout porque nunca veían el `moveDone`).
-- Latencia: el firmware solicita en `onConnect` un intervalo de conexión de
-  7.5-15ms (`updateConnParams`, default de Windows ~30-60ms) y supervision
-  timeout de 4s para tolerar microcortes de radio sin caer el enlace.
+- Latencia: el firmware solicita un intervalo de conexión de 15-30ms
+  (`updateConnParams`, default de Windows ~30-60ms) y supervision timeout de
+  4s para tolerar microcortes de radio sin caer el enlace.
+  **Corregido en v2.0.5:** pedirlo inline en `onConnect` (como hacía v2.0.4,
+  con un intervalo aún más agresivo de 7.5-15ms) tumbaba el enlace a los 2-3s
+  — Windows a veces rechaza/renegocia parámetros tan cortos mientras el MTU
+  todavía se está negociando. Ahora se pide una sola vez, 1.5s después de
+  conectar (`bleTick`), con valores más conservadores.
+- **Telemetría corrupta justo al conectar (corregido, fw v2.0.5):** la
+  telemetría arrancaba de inmediato tras `onConnect`, antes de que el MTU
+  grande (517) terminara de negociarse — cada línea de telemetría (~380
+  bytes) viajaba en hasta 19 notificaciones de 20 bytes cada 100ms,
+  saturando el enlace recién establecido (NimBLE descarta notificaciones en
+  silencio si su cola se llena). `bleSendLine` ahora espera 1.5s desde la
+  conexión antes de mandar nada, y el MTU real se seguimiento vía el
+  callback `onMTUChange` en vez de consultarlo por polling.
 - **Desconexiones inesperadas bajo ráfagas (corregido, fw v2.0.4 + GUI):** el
   `onWrite` de NimBLE corre en la tarea del stack BLE; parsear y ejecutar ahí
   cada comando (incluyendo hardware lento como el I2C del OLED) bloqueaba esa
