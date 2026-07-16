@@ -164,17 +164,19 @@ Mismo set de comandos que ya usa PlayMe (reutilizado tal cual):
 | `oledDrawPixel` | `x:Int`, `y:Int` |
 | `oledDisplay` | — (fuerza refresco de pantalla si el firmware buffer-ea el dibujo) |
 
-**Importante (confirmado v1.6, fix de rendimiento):** todos los `oled*` de arriba
-(excepto `oledDisplay`) **solo escriben en el framebuffer en RAM**, no tocan el
-panel físico. `oledDisplay` es el único comando que hace el volcado real por I2C.
-Antes (v1.1-v1.5) cada comando de dibujo hacía su propio `display.display()`
-inmediato -- un volcado completo de 128x128px por I2C (decenas de ms) por CADA
-figura. Como el firmware es de un solo hilo, mientras estaba ocupado mandando
-esos bytes por I2C no leía el siguiente comando serial ni corría el tick de
-movimiento -- eso se sentía como lag en motores/RGB al combinarlos con OLED.
-**Cualquier secuencia de dibujo en Scratch ahora debe terminar con el bloque
-"OLED actualizar pantalla" (`oledDisplay`) para que se vea el resultado** --
-dibujar sin ese bloque al final ya no actualiza el panel físico.
+**Comportamiento de refresco (v2.0.3, reemplaza el esquema de v1.6):** todos los
+`oled*` (excepto `oledDisplay`) escriben solo en el framebuffer en RAM y marcan
+la pantalla como pendiente; un **auto-flush con límite de frecuencia** en el
+loop del firmware vuelca el framebuffer al panel como máximo cada 100ms cuando
+hay dibujo pendiente. Resultado: los bloques OLED funcionan solos (no requieren
+terminar con "OLED actualizar pantalla"), pero el costo del volcado por I2C
+queda acotado a 10Hz (~6ms por flush con I2C a 400kHz) y no produce el lag en
+motores/RGB de v1.5 (donde CADA figura volcaba los 128x128px completos de
+inmediato). Historia: v1.6 quitó el flush automático por completo y exigía el
+bloque "OLED actualizar pantalla" al final de cada secuencia — eso arregló el
+lag pero rompió la usabilidad (dibujar "no hacía nada" sin ese bloque).
+`oledDisplay` sigue existiendo y fuerza un volcado inmediato, útil para
+sincronizar el refresco a mano (por ejemplo animaciones).
 
 ### Audio
 
