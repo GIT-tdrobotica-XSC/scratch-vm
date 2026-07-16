@@ -47,6 +47,7 @@ class PlayGoPeripheral {
         this._heldFreq = null;       // nota sostenida por holdNote (Hz)
         this._lastMotorState = null; // "left,right" | "stopped" | null/undefined
         this._lastRgbJson = null;    // ultimo comando setRGB enviado (JSON literal)
+        this._toneActive = false;    // true tras enviar cualquier tone (dedupe de stopTone)
 
         this._runtime.registerPeripheralExtension(extensionId, this);
         this._autoScan();
@@ -151,6 +152,7 @@ class PlayGoPeripheral {
             this._heldFreq = null;
             this._lastMotorState = null;
             this._lastRgbJson = null;
+            this._toneActive = false;
 
             this._setupDataHandler();
 
@@ -1370,6 +1372,7 @@ class PlayGo {
             // aplica a este bloque.
             const durationMs = Math.max(1, parseInt(args.DURATION));
             this.peripheral._heldFreq = null; // este tono con duracion pisa cualquier nota sostenida
+            this.peripheral._toneActive = true;
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{ command: 'tone', freq, durationMs }]
@@ -1391,6 +1394,7 @@ class PlayGo {
             const freq = this._noteToFreq(args.NOTE, args.OCTAVE);
             const durationMs = Math.max(1, parseInt(args.DURATION));
             this.peripheral._heldFreq = null; // esta nota con duracion pisa cualquier nota sostenida
+            this.peripheral._toneActive = true;
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{ command: 'tone', freq, durationMs }]
@@ -1417,6 +1421,7 @@ class PlayGo {
             // por segundo; sin esto se satura el serial con comandos identicos.
             if (this.peripheral._heldFreq === freq) return;
             this.peripheral._heldFreq = freq;
+            this.peripheral._toneActive = true;
             const json = JSON.stringify({
                 // durationMs:0 = "sostener indefinidamente" para el firmware:
                 // suena hasta que llegue un toneStop. A diferencia de playNote,
@@ -1443,6 +1448,7 @@ class PlayGo {
             // apagaba la nota de los demas ~30 veces por segundo).
             if (this.peripheral._heldFreq !== freq) return;
             this.peripheral._heldFreq = null;
+            this.peripheral._toneActive = false;
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{ command: 'toneStop' }]
@@ -1456,6 +1462,12 @@ class PlayGo {
     async stopTone() {
         if (!this.peripheral.isConnected()) return;
         try {
+            // Deduplicacion: en la rama "si no" de un por-siempre este bloque
+            // se reevalua ~30-60 veces/segundo mientras no hay tono sonando
+            // (confirmado en consola: 34 toneStop identicos seguidos). Solo
+            // enviar si hubo algun tone desde el ultimo stop.
+            if (!this.peripheral._toneActive) return;
+            this.peripheral._toneActive = false;
             this.peripheral._heldFreq = null; // corta tambien cualquier nota sostenida
             const json = JSON.stringify({
                 command: 'outputsQueue',
