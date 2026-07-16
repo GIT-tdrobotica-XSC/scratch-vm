@@ -46,6 +46,15 @@ Detalles técnicos (implementados en `playgo-ble.js` GUI / NimBLE firmware):
   (con Chrome/Windows la telemetría completa suele caber en 1 notificación). Ambos
   lados re-ensamblan por el delimitador `\n`, así que la fragmentación es
   transparente para el protocolo.
+  **Bug corregido (firmware v2.0.2):** el troceo debe usar el MTU **negociado
+  real** (`getPeerMTU`), no el preferido (`getMTU()` devuelve el 517 local aunque
+  el central haya negociado menos) — NimBLE recorta en silencio cada notify que
+  exceda el MTU real, y la telemetría llegaba truncada/mezclada ("JSON inválido"
+  en consola; los bloques de movimiento quedaban colgados en rojo hasta su
+  timeout porque nunca veían el `moveDone`).
+- Latencia: el firmware solicita en `onConnect` un intervalo de conexión de
+  7.5-15ms (`updateConnParams`, default de Windows ~30-60ms) y supervision
+  timeout de 4s para tolerar microcortes de radio sin caer el enlace.
 - Ambos transportes conviven: el firmware procesa comandos de cualquiera de los dos
   y emite la telemetría por ambos. Al desconectarse el BLE, vuelve a anunciarse solo.
 - **La actualización de firmware sigue requiriendo USB** (esptool necesita el puerto
