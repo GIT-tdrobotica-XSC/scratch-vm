@@ -48,6 +48,7 @@ class PlayGoPeripheral {
         this._lastMotorState = null; // "left,right" | "stopped" | null/undefined
         this._lastRgbJson = null;    // ultimo comando setRGB enviado (JSON literal)
         this._toneActive = false;    // true tras enviar cualquier tone (dedupe de stopTone)
+        this._lastServoJson = null;  // ultimo comando servoWrite enviado (JSON literal)
 
         this._runtime.registerPeripheralExtension(extensionId, this);
         this._autoScan();
@@ -153,6 +154,7 @@ class PlayGoPeripheral {
             this._lastMotorState = null;
             this._lastRgbJson = null;
             this._toneActive = false;
+            this._lastServoJson = null;
 
             this._setupDataHandler();
 
@@ -1042,6 +1044,12 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'servoWrite', pin: gpio, angle }]
             });
+            // Deduplicacion (mismo esquema que RGB): un barrido suave llama
+            // este bloque muchas veces por segundo dentro de un "por siempre";
+            // sin esto, cada vuelta reenviaria el mismo angulo aunque no haya
+            // cambiado (ej. tecla soltada, o servo ya en el limite 0/180).
+            if (this.peripheral._lastServoJson === json) return;
+            this.peripheral._lastServoJson = json;
             await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en setServoPlayGo:', e);
