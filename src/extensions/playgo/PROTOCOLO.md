@@ -127,7 +127,26 @@ contador de pulsos en la interrupción), no leyendo un segundo canal.
 | `turnAngle` | `moveId:Int`, `angleDeg:Number`, `speed:Number(-100..100)`, `wheelDiameterCm:Number`, `trackWidthCm:Number`, `pulsesPerRev:Int` | Gira el robot en su propio eje el ángulo indicado (positivo = sentido horario). Diferencial: cada rueda gira en sentido opuesto una distancia de arco `angleDeg/360 * π * trackWidthCm`. |
 | `turnWheelRevs` | `moveId:Int`, `wheel:'left'|'right'|'both'`, `revolutions:Number`, `speed:Number(-100..100)`, `pulsesPerRev:Int` | Gira la(s) rueda(s) indicada(s) el número de vueltas exacto (control directo por encoder, sin conversión a distancia). |
 | `resetEncoders` | — | Pone en 0 los contadores acumulados `encoderLeft`/`encoderRight` de la telemetría. |
-| `servoWrite` | `pin:Int(11,12,13,14)`, `angle:Int(0-180)` | Mueve el servo conectado en el puerto especial A/B/C/D (= GPIO 11/12/13/14 respectivamente, serigrafía de la placa). Mismo GPIO que `digitalWrite` de playBlocks/play+ — el firmware decide el modo según cuál de los dos comandos reciba para ese pin. |
+| `servoWrite` | `pin:Int(11,12,13,14)`, `angle:Int(0-180)` | Mueve el servo conectado en el puerto especial A/B/C/D (= GPIO 11/12/13/14 respectivamente, serigrafía de la placa). Mismo GPIO que `digitalWrite` de playBlocks/play+ — el firmware decide el modo según cuál de los dos comandos reciba para ese pin. Deduplicado del lado GUI igual que `setMotorSpeed`/RGB. |
+
+**Bug de servos en ESP32-S3 corregido (fw v2.0.6)** — "no deja más de 2 servos,
+se bloquean los pines" es un bug **documentado de la librería ESP32Servo**,
+específicamente en ESP32-S3 (no exclusivo de este proyecto — reportes
+idénticos en el
+[foro de Arduino](https://forum.arduino.cc/t/esp32-s3-not-working-with-2-servos/1157409)
+y el [issue #35 de la librería](https://github.com/madhephaestus/ESP32Servo/issues/35)).
+Causa: sin reservar explícitamente los 4 timers de hardware antes del primer
+`attach()`, la librería los asigna de forma implícita y colisiona consigo
+misma a partir del 3er servo. Fix: `ESP32PWM::allocateTimer(0..3)` al inicio
+de `setup()`, antes de cualquier uso de servo.
+Se descartó un segundo intento (cambiar el pin inactivo de cada motor de
+`analogWrite(pin,0)` a `digitalWrite(pin,LOW)` para "liberar" canales LEDC)
+tras verificar que es un bug conocido del core Arduino-ESP32
+([issue #9057](https://github.com/espressif/arduino-esp32/issues/9057)):
+`digitalWrite()` después de `analogWrite()` en el **mismo pin** no apaga el
+PWM de forma confiable, y el canal LEDC queda asignado al pin desde el primer
+`analogWrite()` sin importar qué función se llame después — no liberaba nada
+y habría introducido un bug nuevo.
 
 **Deduplicación del lado GUI (`setMotorSpeed`/`stopMotors`)** — patrón típico
 "control por teclado": `por siempre: si <tecla> entonces Motores... si no
