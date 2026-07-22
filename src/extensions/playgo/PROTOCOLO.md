@@ -148,6 +148,24 @@ PWM de forma confiable, y el canal LEDC queda asignado al pin desde el primer
 `analogWrite()` sin importar qué función se llame después — no liberaba nada
 y habría introducido un bug nuevo.
 
+**Segundo bug de servos corregido (fw v2.0.7): "los servos se combinan"** (el
+servo del puerto B se movía a la par con el C, el de A con el C, al conectar
+el 3ro). Causa raíz: `analogWrite` (core Arduino) y ESP32Servo son **dos
+asignadores de canales LEDC independientes** que se reparten a ciegas los
+mismos 8 canales del ESP32-S3 — al adjuntar el 3er servo, ESP32Servo tomaba
+un canal que `analogWrite` ya le había dado a un motor, dejando el mismo
+canal PWM ruteado a dos pines (un pin reproducía la señal del otro). Fix:
+motores migrados a la clase `ESP32PWM` de la propia librería ESP32Servo, de
+modo que **todo** el PWM (4 canales de motor @1kHz + hasta 4 servos @50Hz =
+8 canales) sale del mismo repartidor, agrupado por frecuencia en los 4 timers
+sin colisiones.
+
+**Deduplicación de `servoWrite` corregida a POR PIN (GUI):** el caché único
+inicial hacía ping-pong con 2+ servos activos en scripts paralelos (el
+comando del servo C pisaba el caché del D y viceversa), reenviando todo ~60
+veces/segundo aunque los ángulos no cambiaran — ese flood saturaba el BLE y
+era la causa de la "latencia alta" reportada tras agregar los servos.
+
 **Deduplicación del lado GUI (`setMotorSpeed`/`stopMotors`)** — patrón típico
 "control por teclado": `por siempre: si <tecla> entonces Motores... si no
 Detener motores` reevalúa el bloque ~30-60 veces/segundo. Sin deduplicar, cada

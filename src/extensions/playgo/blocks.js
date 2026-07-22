@@ -48,7 +48,7 @@ class PlayGoPeripheral {
         this._lastMotorState = null; // "left,right" | "stopped" | null/undefined
         this._lastRgbJson = null;    // ultimo comando setRGB enviado (JSON literal)
         this._toneActive = false;    // true tras enviar cualquier tone (dedupe de stopTone)
-        this._lastServoJson = null;  // ultimo comando servoWrite enviado (JSON literal)
+        this._lastServoAngles = {};  // ultimo angulo enviado POR PIN {gpio: angle}
 
         this._runtime.registerPeripheralExtension(extensionId, this);
         this._autoScan();
@@ -154,7 +154,7 @@ class PlayGoPeripheral {
             this._lastMotorState = null;
             this._lastRgbJson = null;
             this._toneActive = false;
-            this._lastServoJson = null;
+            this._lastServoAngles = {};
 
             this._setupDataHandler();
 
@@ -1040,16 +1040,18 @@ class PlayGo {
             const portToGpio = { A: 11, B: 12, C: 13, D: 14 };
             const gpio = portToGpio[args.PORT] || 11;
             const angle = Math.max(0, Math.min(180, parseInt(args.ANGLE)));
+            // Deduplicacion POR PIN (no un cache unico): con 2+ servos activos
+            // en scripts paralelos, un cache unico hace ping-pong (el comando
+            // del servo C pisa el cache del D y viceversa) y TODO se reenvia
+            // siempre -- confirmado en consola: pin13/pin14 angle:0 alternando
+            // ~60 veces/segundo sin que el angulo cambiara. Ese flood saturaba
+            // el BLE (la "latencia alta" reportada era backlog, no radio).
+            if (this.peripheral._lastServoAngles[gpio] === angle) return;
+            this.peripheral._lastServoAngles[gpio] = angle;
             const json = JSON.stringify({
                 command: 'outputsQueue',
                 testValue: [{ command: 'servoWrite', pin: gpio, angle }]
             });
-            // Deduplicacion (mismo esquema que RGB): un barrido suave llama
-            // este bloque muchas veces por segundo dentro de un "por siempre";
-            // sin esto, cada vuelta reenviaria el mismo angulo aunque no haya
-            // cambiado (ej. tecla soltada, o servo ya en el limite 0/180).
-            if (this.peripheral._lastServoJson === json) return;
-            this.peripheral._lastServoJson = json;
             await this.peripheral.send(json);
         } catch (e) {
             console.error('Error en setServoPlayGo:', e);
