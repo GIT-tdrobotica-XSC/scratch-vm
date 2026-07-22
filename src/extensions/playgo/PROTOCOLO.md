@@ -162,17 +162,20 @@ PWM de forma confiable, y el canal LEDC queda asignado al pin desde el primer
 `analogWrite()` sin importar qué función se llame después — no liberaba nada
 y habría introducido un bug nuevo.
 
-**Segundo bug de servos corregido (fw v2.0.7): "los servos se combinan"** (el
-servo del puerto B se movía a la par con el C, el de A con el C, al conectar
-el 3ro). Causa raíz: `analogWrite` (core Arduino) y ESP32Servo son **dos
-asignadores de canales LEDC independientes** que se reparten a ciegas los
-mismos 8 canales del ESP32-S3 — al adjuntar el 3er servo, ESP32Servo tomaba
-un canal que `analogWrite` ya le había dado a un motor, dejando el mismo
-canal PWM ruteado a dos pines (un pin reproducía la señal del otro). Fix:
-motores migrados a la clase `ESP32PWM` de la propia librería ESP32Servo, de
-modo que **todo** el PWM (4 canales de motor @1kHz + hasta 4 servos @50Hz =
-8 canales) sale del mismo repartidor, agrupado por frecuencia en los 4 timers
-sin colisiones.
+**Segundo bug de servos — "los servos se combinan" (resuelto DEFINITIVO en fw
+v2.0.9)** (el servo del puerto B se movía a la par con el C, el de A con el
+C, al conectar el 3ro). Se intentaron dos fixes intermedios que NO lo
+resolvieron: v2.0.6 (`allocateTimer(0..3)`) y v2.0.7 (motores migrados de
+`analogWrite` al asignador `ESP32PWM` de la librería, para unificar el
+reparto de canales). El espejo persistió en hardware real. Causa de fondo:
+ESP32Servo 3.x está escrita para el core Arduino 3.x, y sobre el core 2.x
+(platform `espressif32` oficial de PlatformIO) corre en capa de
+compatibilidad con bookkeeping de canales LEDC poco confiable en el S3.
+**Solución definitiva: eliminar ESP32Servo por completo.** Todo el PWM usa
+la API LEDC del core directamente con canales fijos asignados a mano
+(un canal = un pin, inmutable): motores ch0-3 @1kHz (timers 0-1), servos
+ch4-7 @50Hz (timers 2-3); pulso de servo estándar 544-2400µs. La librería
+se quitó también de `platformio.ini`.
 
 **Deduplicación de `servoWrite` corregida a POR PIN (GUI):** el caché único
 inicial hacía ping-pong con 2+ servos activos en scripts paralelos (el
