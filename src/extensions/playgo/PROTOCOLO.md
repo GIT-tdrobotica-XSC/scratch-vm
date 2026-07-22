@@ -66,8 +66,22 @@ Detalles técnicos (implementados en `playgo-ble.js` GUI / NimBLE firmware):
   bytes) viajaba en hasta 19 notificaciones de 20 bytes cada 100ms,
   saturando el enlace recién establecido (NimBLE descarta notificaciones en
   silencio si su cola se llena). `bleSendLine` ahora espera 1.5s desde la
-  conexión antes de mandar nada, y el MTU real se seguimiento vía el
-  callback `onMTUChange` en vez de consultarlo por polling.
+  conexión antes de mandar nada.
+- **Latencia general de ~1s en TODO comando (corregido, fw v2.0.8 + GUI):**
+  v2.0.5 pasó a confiar solo en el callback `onMTUChange` para conocer el
+  MTU; si no se dispara, el firmware asume MTU 23 para siempre y la
+  telemetría (~400 bytes cada 100ms) se trocea en ~20 notificaciones de 20
+  bytes = ~200 notif/s — más de lo que el radio drena por evento de
+  conexión. El backlog crecía sin límite y cualquier comando entrante (un
+  simple click de LED, sin scripts corriendo) quedaba detrás, con ~1s de
+  espera. Fixes: (a) `bleEffectiveMtu()` combina el callback con polling de
+  `getPeerMTU` como respaldo; (b) telemetría BLE con **intervalo
+  adaptativo** — 10Hz si el MTU permite 1 notificación por línea, 2.5Hz si
+  quedó en el mínimo (nunca satura); (c) el firmware loguea el MTU efectivo
+  en el monitor serial (si sale 23, el central no negoció MTU grande); (d)
+  del lado GUI, si el tamaño de las notificaciones recibidas prueba que el
+  MTU es grande, cada comando va en UN solo write en vez de 5+ trozos de 20
+  bytes (menos latencia de subida).
 - **Desconexiones inesperadas bajo ráfagas (corregido, fw v2.0.4 + GUI):** el
   `onWrite` de NimBLE corre en la tarea del stack BLE; parsear y ejecutar ahí
   cada comando (incluyendo hardware lento como el I2C del OLED) bloqueaba esa

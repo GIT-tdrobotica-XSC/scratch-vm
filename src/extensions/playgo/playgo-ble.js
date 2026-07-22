@@ -29,6 +29,12 @@ class PlayGoBLE {
         // write() concurrentemente, y sin serializar sus trozos de 20 bytes se
         // intercalarian, corrompiendo ambas lineas JSON en el firmware.
         this._writeChain = Promise.resolve();
+        // Notificacion mas grande recibida en esta conexion. Es la EVIDENCIA
+        // de que el MTU negociado es grande (una notificacion nunca puede
+        // exceder MTU-3): si el firmware nos mando >100 bytes en un solo
+        // evento, nuestros comandos (~80-120 bytes) tambien caben en UN
+        // write, sin trocear a 20 bytes (5 writes secuenciales = mas latencia).
+        this._maxNotifSize = 0;
     }
 
     /**
@@ -57,11 +63,15 @@ class PlayGoBLE {
 
         await this.txChar.startNotifications();
         this.txChar.addEventListener('characteristicvaluechanged', e => {
+            if (e.target.value.byteLength > this._maxNotifSize) {
+                this._maxNotifSize = e.target.value.byteLength;
+            }
             const text = new TextDecoder().decode(e.target.value);
             this.handleIncoming(text);
         });
 
         this.buffer = '';
+        this._maxNotifSize = 0;
         this.connected = true;
         console.log('[PlayGo BLE] Conectado a', device.name || '(sin nombre)');
     }
@@ -144,16 +154,24 @@ class PlayGoBLE {
         if (!this.rxChar || !this.connected) return;
         try {
             const data = new TextEncoder().encode(msg + '\n');
-            // Trocear a 20 bytes: el payload garantizado con el MTU minimo BLE
-            // (23-3). El firmware re-ensambla por el delimitador '\n', asi que
-            // la fragmentacion es transparente para el protocolo.
-            const CHUNK = 20;
-            for (let i = 0; i < data.length; i += CHUNK) {
-                const slice = data.slice(i, i + CHUNK);
-                if (this.rxChar.writeValueWithoutResponse) {
-                    await this.rxChar.writeValueWithoutResponse(slice);
-                } else {
-                    await this.rxChar.writeValue(slice);
+            const writeOne = slice => (this.rxChar.writeValueWithoutResponse
+                ? this.rxChar.writeValueWithoutResponse(slice)
+                : this.rxChar.writeValue(slice));
+
+            // Si ya recibimos una notificacion grande del firmware, el MTU
+            // negociado es comprobadamente grande y el comando completo cabe
+            // en UN solo write (menos latencia que 5+ writes secuenciales de
+            // 20 bytes). Si no hay evidencia, trocear a 20 bytes -- el payload
+            // garantizado con el MTU minimo (23-3). El firmware re-ensambla
+            // por '\n', asi que la fragmentacion es transparente en ambos casos.
+            const singleWriteOk = this._maxNotifSize > 100 &&
+                data.length <= this._maxNotifSize;
+            if (singleWriteOk) {
+                await writeOne(data);
+            } else {
+                const CHUNK = 20;
+                for (let i = 0; i < data.length; i += CHUNK) {
+                    await writeOne(data.slice(i, i + CHUNK));
                 }
             }
             console.log('[PlayGo BLE] TX:', msg);
