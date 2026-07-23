@@ -44,6 +44,12 @@ class PlayGoBLE {
             if (e.target.value.byteLength > this._maxNotifSize) {
                 this._maxNotifSize = e.target.value.byteLength;
             }
+            // Vitalidad del enlace = BYTES recibidos, no JSON validos: si la
+            // telemetria llega corrupta (fragmentos perdidos por congestion en
+            // el firmware), el enlace sigue VIVO y el watchdog no debe
+            // cortarlo por "silencio" -- la corrupcion tiene su propio
+            // detector (_validRx en _startWatch).
+            this._lastRxTime = Date.now();
             const text = new TextDecoder().decode(e.target.value);
             this.handleIncoming(text);
         };
@@ -93,6 +99,8 @@ class PlayGoBLE {
         this._writeChain = Promise.resolve();
         this.connected = true;
         this._lastRxTime = Date.now();
+        this._openedAt = Date.now();
+        this._validRx = 0;
         this._startWatch();
     }
 
@@ -118,6 +126,16 @@ class PlayGoBLE {
             if (!this.connected) return;
             if (this._lastRxTime && Date.now() - this._lastRxTime > 12000) {
                 console.warn('[PlayGo BLE] Sin telemetría >12s, enlace muerto — reconectando');
+                this._handleUnexpectedDisconnect();
+                return;
+            }
+            // Sesion "enferma": llegan bytes pero NINGUNA linea parsea como
+            // JSON valido tras 10s -- visto en campo cuando el firmware queda
+            // troceando al MTU minimo y la congestion mutila las lineas. Una
+            // conexion fresca renegocia MTU/parametros desde cero y
+            // normalmente sale sana: forzar el ciclo de reconexion.
+            if (this._openedAt && Date.now() - this._openedAt > 10000 && this._validRx === 0) {
+                console.warn('[PlayGo BLE] Telemetría corrupta persistente, renegociando conexión...');
                 this._handleUnexpectedDisconnect();
                 return;
             }
@@ -169,7 +187,7 @@ class PlayGoBLE {
             }
         } catch (e) { /* ignorar */ }
 
-        const delaysMs = [1000, 2000, 4000];
+        const delaysMs = [1000, 2000, 3000, 4000, 5000];
         for (const delay of delaysMs) {
             await new Promise(resolve => setTimeout(resolve, delay));
             // El usuario desconecto manualmente durante los reintentos: parar.
@@ -181,6 +199,17 @@ class PlayGoBLE {
                 return;
             } catch (err) {
                 console.warn('[PlayGo BLE] Reintento de conexión falló:', err.message || err);
+                // Quirk conocido de Chrome tras una desconexion: gatt.connect()
+                // resuelve desde el estado cacheado pero el enlace real no
+                // esta arriba, y getPrimaryService() falla con "GATT Server is
+                // disconnected" (visto en campo tal cual). Cerrar la sesion
+                // rancia antes del proximo intento para que el siguiente
+                // connect() abra un enlace de verdad.
+                try {
+                    if (this.device && this.device.gatt && this.device.gatt.connected) {
+                        this.device.gatt.disconnect();
+                    }
+                } catch (e) { /* ignorar */ }
             }
         }
 
@@ -227,7 +256,7 @@ class PlayGoBLE {
             if (line.startsWith('{') && line.endsWith('}')) {
                 try {
                     const data = JSON.parse(line);
-                    this._lastRxTime = Date.now();
+                    this._validRx = (this._validRx || 0) + 1;
                     if (this.onData) {
                         this.onData(data);
                     }

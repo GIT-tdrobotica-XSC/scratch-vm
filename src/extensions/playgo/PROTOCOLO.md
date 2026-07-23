@@ -187,6 +187,31 @@ Detalles técnicos (implementados en `playgo-ble.js` GUI / NimBLE firmware):
   umbral y la reconexión son de **GUI** — requieren recargar el build de
   staging, no basta reflashear el firmware.
 
+- **3er dato de campo (fw v2.1.3 + GUI): `0x28` sin `updateConnParams` +
+  telemetría corrupta toda la sesión.** El log mostró (1) un `0x28` con el
+  firmware v2.1.1+ que ya no llama `updateConnParams` — por lo tanto el
+  procedimiento con "instante" lo inicia **Windows** (renegociación de
+  parámetros o mapa de canales, rutinaria en centrales) y el radio del
+  ESP32 pierde el instante por eventos de conexión perdidos (margen de
+  señal justo / interferencia 2.4GHz); (2) `JSON inválido` en **toda** la
+  telemetría de la sesión previa a la caída: `bleSendLine` ignoraba el
+  retorno de `notify()` — con la cola de NimBLE congestionada, fragmentos
+  se descartaban en silencio y las líneas llegaban mezcladas (empiezan con
+  `{`, terminan con `}`, no parsean); (3) el primer reintento de la
+  reconexión automática falló con el quirk conocido de Chrome
+  (`gatt.connect()` resuelve desde caché pero `getPrimaryService()` tira
+  "GATT Server is disconnected"). Fixes — firmware v2.1.3: potencia TX al
+  máximo (+9dBm, antes ~+3) para más margen de enlace; `notify()` con
+  chequeo de retorno y 3 reintentos (3ms), abortando el resto de la línea
+  si la congestión persiste (hueco limpio en vez de línea envenenada); log
+  del MTU efectivo al arrancar la telemetría de cada conexión. GUI: la
+  vitalidad del enlace ahora se mide por **bytes recibidos** (no por JSON
+  válidos — corrupción ≠ silencio); detector de "sesión enferma" (10s
+  conectada sin un solo JSON válido → fuerza el ciclo de reconexión, una
+  conexión fresca renegocia MTU desde cero); reconexión con 5 reintentos y
+  cierre de la sesión GATT rancia tras cada intento fallido (quirk de
+  Chrome).
+
 ## Framing
 
 - Cada mensaje es **un JSON completo por línea**, terminado en `\n`.
