@@ -169,6 +169,24 @@ Detalles técnicos (implementados en `playgo-ble.js` GUI / NimBLE firmware):
   tolerancia a microcortes de radio sin perder la detección de un enlace
   genuinamente muerto.
 
+- **Reconexión automática (GUI, junto con fw v2.1.2):** tras un segundo
+  `0x13` en campo aun con el ahorro de energía desactivado, se cambió la
+  estrategia: además de cazar la causa, la conexión ahora es
+  **auto-recuperable**. Web Bluetooth permite volver a llamar
+  `device.gatt.connect()` sobre un dispositivo ya autorizado **sin abrir el
+  picker ni gesto del usuario**, y el firmware se re-anuncia solo tras
+  cualquier desconexión — así que ante una desconexión inesperada la GUI
+  reintenta reconectar sola (backoff 1s/2s/4s) y la sesión se recupera en
+  ~1-2s sin que el usuario se entere; solo si los tres reintentos fallan se
+  notifica la desconexión a la UI. Los comandos de bloques emitidos durante
+  la ventana de reconexión se descartan en silencio. Diagnóstico agregado:
+  al caer el enlace, la consola registra hace cuánto llegó la última
+  telemetría — si es ~0ms el corte fue externo y abrupto (Windows/Chrome);
+  si ronda el umbral (~12s), fue el propio watchdog de la GUI quien lo
+  declaró muerto (telemetría atascada). Nota operativa: los cambios de
+  umbral y la reconexión son de **GUI** — requieren recargar el build de
+  staging, no basta reflashear el firmware.
+
 ## Framing
 
 - Cada mensaje es **un JSON completo por línea**, terminado en `\n`.

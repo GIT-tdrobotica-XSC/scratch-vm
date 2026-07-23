@@ -35,6 +35,18 @@ class PlayGoBLE {
         // evento, nuestros comandos (~80-120 bytes) tambien caben en UN
         // write, sin trocear a 20 bytes (5 writes secuenciales = mas latencia).
         this._maxNotifSize = 0;
+        // Ciclo de reconexion automatica en curso (evita lanzar dos a la vez).
+        this._reconnecting = false;
+        // Handler de notificaciones como referencia estable: permite
+        // remove+add en cada (re)conexion sin acumular listeners duplicados
+        // si Chrome devuelve el mismo objeto characteristic cacheado.
+        this._notifyHandler = e => {
+            if (e.target.value.byteLength > this._maxNotifSize) {
+                this._maxNotifSize = e.target.value.byteLength;
+            }
+            const text = new TextDecoder().decode(e.target.value);
+            this.handleIncoming(text);
+        };
     }
 
     /**
@@ -56,55 +68,61 @@ class PlayGoBLE {
         this.device = device;
         device.addEventListener('gattserverdisconnected', () => this._handleUnexpectedDisconnect());
 
-        const server = await device.gatt.connect();
+        await this._openGatt();
+        console.log('[PlayGo BLE] Conectado a', device.name || '(sin nombre)');
+    }
+
+    /**
+     * Abre (o reabre) la sesion GATT sobre this.device: servicio, caracteristicas,
+     * notificaciones y watchdog. Compartido entre la conexion inicial (connect)
+     * y la reconexion automatica (_autoReconnect) — Web Bluetooth permite
+     * reconectar a un dispositivo ya autorizado sin gesto del usuario.
+     */
+    async _openGatt() {
+        const server = await this.device.gatt.connect();
         const service = await server.getPrimaryService(NUS_SERVICE);
         this.rxChar = await service.getCharacteristic(NUS_RX);
         this.txChar = await service.getCharacteristic(NUS_TX);
 
         await this.txChar.startNotifications();
-        this.txChar.addEventListener('characteristicvaluechanged', e => {
-            if (e.target.value.byteLength > this._maxNotifSize) {
-                this._maxNotifSize = e.target.value.byteLength;
-            }
-            const text = new TextDecoder().decode(e.target.value);
-            this.handleIncoming(text);
-        });
+        this.txChar.removeEventListener('characteristicvaluechanged', this._notifyHandler);
+        this.txChar.addEventListener('characteristicvaluechanged', this._notifyHandler);
 
         this.buffer = '';
         this._maxNotifSize = 0;
+        this._writeChain = Promise.resolve();
         this.connected = true;
         this._lastRxTime = Date.now();
+        this._startWatch();
+    }
 
-        // Vigilancia del enlace (cada 2s): (a) si la telemetria (10Hz, o
-        // 2.5Hz con MTU minimo) lleva sin llegar mas que el umbral, el enlace
-        // esta muerto aunque Chrome no haya disparado gattserverdisconnected
-        // -- cortar y avisar a la UI (antes quedaba "conectado" en pantalla
-        // pero muerto). (b) ping al firmware: mantiene fresco su watchdog de
-        // trafico entrante (si la placa deja de recibirlo >15s, corta y
-        // re-anuncia por su cuenta). Ademas, si el write del ping falla, ese
-        // error delata el enlace muerto por la via rapida (ver _writeMsg).
-        //
-        // Umbral en 12s (antes 6s, v2.1.2): se detecto que ESTE watchdog
-        // podia ser la causa de desconexiones reportadas como "el PC corto
-        // la conexion" (razon HCI 0x13 en el firmware) -- si Windows pausa
-        // brevemente el radio BLE para ahorro de energia (adaptador con
-        // "permitir apagar para ahorrar energia" activo), la telemetria se
-        // atrasa unos segundos sin que el enlace este realmente muerto, y
-        // este codigo llamaba gatt.disconnect() de forma prematura, lo cual
-        // el firmware ve exactamente como "el PC termino la conexion". 12s
-        // da mas margen a esos microcortes de radio sin dejar de detectar
-        // un enlace genuinamente muerto en tiempo razonable.
+    /**
+     * Vigilancia del enlace (cada 2s): (a) si la telemetria (10Hz, o 2.5Hz con
+     * MTU minimo) lleva sin llegar mas que el umbral, el enlace esta muerto
+     * aunque Chrome no haya disparado gattserverdisconnected — cortar y pasar
+     * al ciclo de reconexion. (b) ping al firmware: mantiene fresco su watchdog
+     * de trafico entrante (si la placa deja de recibirlo >25s, corta y
+     * re-anuncia por su cuenta). Ademas, si el write del ping falla, ese error
+     * delata el enlace muerto por la via rapida (ver _writeMsg).
+     *
+     * Umbral en 12s (antes 6s, v2.1.2): este watchdog llama gatt.disconnect(),
+     * que el firmware ve EXACTAMENTE como "el PC corto la conexion" (razon HCI
+     * 0x13) — si Windows atrasa la telemetria unos segundos (throttling de
+     * energia, pestana en segundo plano), un umbral corto remata conexiones
+     * que siguen vivas. 12s da margen a esos microcortes sin dejar de detectar
+     * un enlace genuinamente muerto en tiempo razonable.
+     */
+    _startWatch() {
+        this._clearWatchTimer();
         this._watchTimer = setInterval(() => {
             if (!this.connected) return;
             if (this._lastRxTime && Date.now() - this._lastRxTime > 12000) {
-                console.warn('[PlayGo BLE] Sin telemetría >12s, enlace muerto — desconectando');
+                console.warn('[PlayGo BLE] Sin telemetría >12s, enlace muerto — reconectando');
                 this._handleUnexpectedDisconnect();
                 return;
             }
             this.write('{"command":"ping"}');
         }, 2000);
-
-        console.log('[PlayGo BLE] Conectado a', device.name || '(sin nombre)');
     }
 
     _clearWatchTimer() {
@@ -116,14 +134,58 @@ class PlayGoBLE {
 
     _handleUnexpectedDisconnect() {
         if (!this.connected) return;
-        console.log('[PlayGo BLE] Dispositivo desconectado');
+        // Diagnostico: cuanto hacia que no llegaba telemetria al momento del
+        // corte. Si es bajo (<1s), el enlace murio de golpe (corte externo);
+        // si es alto (~12s), fue este watchdog quien lo declaro muerto.
+        const sinceRx = this._lastRxTime ? Date.now() - this._lastRxTime : -1;
+        console.warn(`[PlayGo BLE] Enlace caído (última telemetría hace ${sinceRx}ms) — reconexión automática...`);
         this.connected = false;
         this._clearWatchTimer();
         this.rxChar = null;
         this.txChar = null;
-        // Cerrar el GATT explicitamente: sin esto, el stack BLE de Windows se
-        // quedaba con la sesion muerta a medio abrir y no permitia reconectar
-        // hasta reiniciar el Bluetooth del PC.
+        this._autoReconnect();
+    }
+
+    /**
+     * Reconexion automatica (v2.1.2): Web Bluetooth permite volver a llamar
+     * device.gatt.connect() sobre un dispositivo ya autorizado SIN abrir el
+     * picker. El firmware se re-anuncia solo tras cualquier desconexion, asi
+     * que aunque Windows/Chrome corten el enlace "de la nada" (razon 0x13),
+     * la sesion se recupera sola en ~1-2s y el usuario ni se entera. Solo si
+     * fallan todos los reintentos se notifica la desconexion a la UI.
+     */
+    async _autoReconnect() {
+        if (this._reconnecting) return;
+        this._reconnecting = true;
+
+        // Asegurar que la sesion GATT anterior quede cerrada antes de reabrir
+        // (si el corte lo declaro nuestro watchdog, Chrome aun la cree viva).
+        // Esto ademas libera la sesion del stack BLE de Windows — sin ese
+        // cierre, quedaba una sesion zombi que bloqueaba reconexiones hasta
+        // reiniciar el Bluetooth del PC.
+        try {
+            if (this.device && this.device.gatt && this.device.gatt.connected) {
+                this.device.gatt.disconnect();
+            }
+        } catch (e) { /* ignorar */ }
+
+        const delaysMs = [1000, 2000, 4000];
+        for (const delay of delaysMs) {
+            await new Promise(resolve => setTimeout(resolve, delay));
+            // El usuario desconecto manualmente durante los reintentos: parar.
+            if (!this.device) break;
+            try {
+                await this._openGatt();
+                this._reconnecting = false;
+                console.log('[PlayGo BLE] Reconectado automáticamente');
+                return;
+            } catch (err) {
+                console.warn('[PlayGo BLE] Reintento de conexión falló:', err.message || err);
+            }
+        }
+
+        this._reconnecting = false;
+        console.error('[PlayGo BLE] Reconexión automática agotada — desconectando');
         try {
             if (this.device && this.device.gatt && this.device.gatt.connected) {
                 this.device.gatt.disconnect();
@@ -144,6 +206,7 @@ class PlayGoBLE {
                 this.device.gatt.disconnect();
             }
         } catch (e) { /* ignorar */ }
+        // device=null tambien frena cualquier ciclo de reconexion en curso.
         this.device = null;
         this.buffer = '';
         console.log('[PlayGo BLE] Desconectado');
@@ -185,7 +248,10 @@ class PlayGoBLE {
 
     write(msg) {
         if (!this.rxChar || !this.connected) {
-            console.error('[PlayGo BLE] No hay conexión activa');
+            // Durante una reconexion automatica los bloques pueden seguir
+            // mandando comandos; se descartan en silencio esos ~1-5s en vez
+            // de llenar la consola de errores.
+            if (!this._reconnecting) console.error('[PlayGo BLE] No hay conexión activa');
             return Promise.resolve();
         }
 
@@ -227,9 +293,8 @@ class PlayGoBLE {
             console.error('[PlayGo BLE] Error enviando datos:', err);
             // Un write GATT fallido con el enlace "conectado" delata que el
             // enlace en realidad murio (tipico: "GATT Server is disconnected"
-            // sin que Chrome disparara el evento). Cortar limpio de una vez
-            // en vez de dejar la sesion zombi que ademas bloqueaba
-            // reconexiones hasta reiniciar el Bluetooth del PC.
+            // sin que Chrome disparara el evento). Cortar y pasar al ciclo de
+            // reconexion automatica de una vez.
             const emsg = (err && err.message) || '';
             if (err && (err.name === 'NetworkError' || emsg.includes('GATT') || emsg.includes('disconnect'))) {
                 this._handleUnexpectedDisconnect();
