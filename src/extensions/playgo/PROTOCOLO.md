@@ -95,6 +95,24 @@ Detalles técnicos (implementados en `playgo-ble.js` GUI / NimBLE firmware):
   scripts simultáneos se intercalaban corrompiendo ambas líneas JSON).
 - Ambos transportes conviven: el firmware procesa comandos de cualquiera de los dos
   y emite la telemetría por ambos. Al desconectarse el BLE, vuelve a anunciarse solo.
+- **Latido del enlace (v2.0.11, fw + GUI):** corrige las "desconexiones
+  fantasma" (PlayCode mostraba conectado con el enlace muerto, y la placa
+  quedaba invisible hasta reiniciarla + reiniciar el Bluetooth del PC).
+  - GUI: cada 2s envía `{"command":"ping"}` (el firmware lo ignora como
+    comando, pero le refresca el reloj de tráfico entrante) y vigila la
+    telemetría: >6s sin recibir nada = enlace muerto → corta limpio
+    (`gatt.disconnect()`, libera la sesión del stack de Windows) y notifica
+    a la UI. Cualquier error de write GATT también dispara el corte.
+  - Firmware: si hubo tráfico entrante y luego silencio >15s, fuerza la
+    desconexión a nivel stack y se re-anuncia; además chequea cada 3s la
+    consistencia entre su flag interno y `getConnectedCount()` del stack
+    (si el evento de desconexión se perdió, se recupera solo).
+- **Diagnóstico de alimentación (fw v2.0.11):** al arrancar, el firmware
+  imprime la causa del último reset en el monitor serial. Si tras una
+  desconexión usando motores+servos+LEDs+sonido a la vez aparece `BROWNOUT`,
+  la fuente (batería 2A) no dio abasto con el pico de corriente — problema
+  de hardware, no de software. Como mitigación, el brillo de los WS2812 se
+  capa a 110/255 (~43%): 10 LEDs a blanco pleno son ~600mA ellos solos.
 - **La actualización de firmware sigue requiriendo USB** (esptool necesita el puerto
   serial físico) — no se puede flashear por BLE.
 - Requiere en `platformio.ini`: `h2zero/NimBLE-Arduino @ ^1.4` (y si el binario no

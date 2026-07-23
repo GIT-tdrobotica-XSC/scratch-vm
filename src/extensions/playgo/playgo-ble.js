@@ -73,15 +73,51 @@ class PlayGoBLE {
         this.buffer = '';
         this._maxNotifSize = 0;
         this.connected = true;
+        this._lastRxTime = Date.now();
+
+        // Vigilancia del enlace (cada 2s): (a) si la telemetria (10Hz, o
+        // 2.5Hz con MTU minimo) lleva >6s sin llegar, el enlace esta muerto
+        // aunque Chrome no haya disparado gattserverdisconnected -- cortar y
+        // avisar a la UI (antes quedaba "conectado" en pantalla pero muerto).
+        // (b) ping al firmware: mantiene fresco su watchdog de trafico
+        // entrante (si la placa deja de recibirlo >15s, corta y re-anuncia
+        // por su cuenta). Ademas, si el write del ping falla, ese error
+        // delata el enlace muerto por la via rapida (ver _writeMsg).
+        this._watchTimer = setInterval(() => {
+            if (!this.connected) return;
+            if (this._lastRxTime && Date.now() - this._lastRxTime > 6000) {
+                console.warn('[PlayGo BLE] Sin telemetría >6s, enlace muerto — desconectando');
+                this._handleUnexpectedDisconnect();
+                return;
+            }
+            this.write('{"command":"ping"}');
+        }, 2000);
+
         console.log('[PlayGo BLE] Conectado a', device.name || '(sin nombre)');
+    }
+
+    _clearWatchTimer() {
+        if (this._watchTimer) {
+            clearInterval(this._watchTimer);
+            this._watchTimer = null;
+        }
     }
 
     _handleUnexpectedDisconnect() {
         if (!this.connected) return;
         console.log('[PlayGo BLE] Dispositivo desconectado');
         this.connected = false;
+        this._clearWatchTimer();
         this.rxChar = null;
         this.txChar = null;
+        // Cerrar el GATT explicitamente: sin esto, el stack BLE de Windows se
+        // quedaba con la sesion muerta a medio abrir y no permitia reconectar
+        // hasta reiniciar el Bluetooth del PC.
+        try {
+            if (this.device && this.device.gatt && this.device.gatt.connected) {
+                this.device.gatt.disconnect();
+            }
+        } catch (e) { /* ignorar */ }
         if (this.onDisconnect) {
             this.onDisconnect();
         }
@@ -89,6 +125,7 @@ class PlayGoBLE {
 
     async disconnect() {
         this.connected = false;
+        this._clearWatchTimer();
         this.rxChar = null;
         this.txChar = null;
         try {
@@ -177,6 +214,15 @@ class PlayGoBLE {
             console.log('[PlayGo BLE] TX:', msg);
         } catch (err) {
             console.error('[PlayGo BLE] Error enviando datos:', err);
+            // Un write GATT fallido con el enlace "conectado" delata que el
+            // enlace en realidad murio (tipico: "GATT Server is disconnected"
+            // sin que Chrome disparara el evento). Cortar limpio de una vez
+            // en vez de dejar la sesion zombi que ademas bloqueaba
+            // reconexiones hasta reiniciar el Bluetooth del PC.
+            const emsg = (err && err.message) || '';
+            if (err && (err.name === 'NetworkError' || emsg.includes('GATT') || emsg.includes('disconnect'))) {
+                this._handleUnexpectedDisconnect();
+            }
             throw err;
         }
     }
