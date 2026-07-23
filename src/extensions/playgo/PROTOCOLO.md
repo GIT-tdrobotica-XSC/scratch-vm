@@ -177,6 +177,19 @@ la API LEDC del core directamente con canales fijos asignados a mano
 ch4-7 @50Hz (timers 2-3); pulso de servo estándar 544-2400µs. La librería
 se quitó también de `platformio.ini`.
 
+**Corrección crítica sobre v2.0.9 (fw v2.0.10):** la primera versión del
+LEDC directo configuraba los canales de servo con resolución de **16 bits**
+— válida en el ESP32 clásico (llega a 20 bits) pero **el ESP32-S3 solo llega
+a 14** (`SOC_LEDC_TIMER_BIT_WIDTH=14`, doc oficial de Espressif). En el S3,
+`ledcSetup(ch, 50, 16)` falla **en silencio** (retorna 0, no configura el
+timer, ningún error) y el canal jamás genera señal — los servos pasaron de
+"espejados" a "muertos". Fix: 14 bits (16384 cuentas por período de 20ms,
+~8 pasos por grado, precisión de sobra) + chequeo del retorno de `ledcSetup`
+con error visible en el monitor serial. Lección para futuros ports: las
+resoluciones LEDC válidas dependen del chip exacto, y la API falla sin
+avisar. Verificado: compila limpio con ESP32Servo fuera del grafo de
+dependencias.
+
 **Deduplicación de `servoWrite` corregida a POR PIN (GUI):** el caché único
 inicial hacía ping-pong con 2+ servos activos en scripts paralelos (el
 comando del servo C pisaba el caché del D y viceversa), reenviando todo ~60
