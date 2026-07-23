@@ -123,13 +123,33 @@ Detalles técnicos (implementados en `playgo-ble.js` GUI / NimBLE firmware):
   ahora imprime en el monitor serial la razón decodificada de cada
   desconexión (`SUPERVISION TIMEOUT` = radio/alimentación, `REMOTE
   TERMINATED` = el PC cortó, `MIC FAILURE` = interferencia, etc.), además de
-  traer años de fixes de estabilidad para el S3. El supervision timeout
-  solicitado subió de 4s a 6s (más tolerancia a microcortes; la recuperación
-  la garantiza el latido). Nota de contexto: las desconexiones usando
-  motores+servos+LEDs+sonido a la vez ocurrieron por **USB** (sospecha:
-  brownout — el diagnóstico de causa de reset lo confirmará); las caídas por
-  **BLE** ocurren con carga liviana y son las que el código de razón va a
-  explicar.
+  traer años de fixes de estabilidad para el S3. Nota de contexto: las
+  desconexiones usando motores+servos+LEDs+sonido a la vez ocurrieron por
+  **USB** (sospecha: brownout — el diagnóstico de causa de reset lo
+  confirmará); las caídas por **BLE** ocurren con carga liviana y fueron
+  diagnosticadas con éxito gracias a este código (ver siguiente entrada).
+
+- **Causa raíz CONFIRMADA de las desconexiones BLE "de la nada" (fw
+  v2.1.1):** con el código de razón de v2.1.0 en mano, la primera prueba en
+  campo con solo LEDs encendidos dio `0x28 = INSTANT PASSED` — un error
+  específico del procedimiento **LL Connection Update**: el central manda
+  `LL_CONNECTION_UPDATE_REQ` con un "instante" (evento de conexión futuro)
+  en el que aplicar nuevos parámetros de conexión; la spec BLE exige un
+  mínimo de ~6 eventos de conexión de margen, y si ese instante pasa antes
+  de que el periférico pueda aplicarlo, el enlace se cae con 0x28 (mismo
+  síntoma reportado en
+  [NimBLE/ESP32-S3](https://github.com/espressif/esp-idf/issues/14053)).
+  Esto salía de una sola llamada en todo el firmware: `updateConnParams()`
+  en `bleTick()`, presente desde v2.0.4 (inline, intervalo 7.5-15ms) y
+  diferida 1.5s desde v2.0.5 (intervalo 15-30ms, timeout 4s→6s). Era
+  sospechosa desde el principio (v2.0.4 daba desconexión a los 2-3s con la
+  misma llamada) y ahora hay prueba directa con el código de error. **Fix:
+  se elimina la llamada por completo** — Windows ya negocia parámetros de
+  conexión razonables por su cuenta al conectar, no hace falta pedir una
+  renegociación explícita, y esa renegociación fue la fuente común de
+  inestabilidad en tres versiones distintas del firmware. El resto de la
+  infraestructura BLE (MTU tracking, latido, watchdog de advertising) es
+  independiente y se mantiene igual.
 
 ## Framing
 
