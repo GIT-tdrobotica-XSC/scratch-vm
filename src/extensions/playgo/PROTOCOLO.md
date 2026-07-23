@@ -151,6 +151,24 @@ Detalles técnicos (implementados en `playgo-ble.js` GUI / NimBLE firmware):
   infraestructura BLE (MTU tracking, latido, watchdog de advertising) es
   independiente y se mantiene igual.
 
+- **2do dato de campo tras v2.1.1: razón `0x13 = REMOTE TERMINATED`** (el PC
+  cortó la conexión). Investigación: el adaptador Bluetooth de Windows tenía
+  activa la opción "permitir que la computadora apague este dispositivo
+  para ahorrar energía" (Administrador de dispositivos → Bluetooth →
+  Propiedades → Administración de energía) — el usuario la desactivó.
+  Explica el patrón completo: (a) la desconexión ocurría "al rato" de
+  inactividad aparente, coincidiendo con el timing típico de ahorro de
+  energía; (b) la razón `0x13` es **exactamente** lo que produce el propio
+  watchdog de la GUI (v2.0.11) al declarar el enlace muerto y llamar
+  `gatt.disconnect()` — si Windows pausaba el radio unos segundos por
+  ahorro de energía, la telemetría se atrasaba y el watchdog (armado a solo
+  6s) remataba conexiones que en realidad seguían vivas. Mitigación
+  adicional aplicada en fw v2.1.2 mientras se confirma que el fix de
+  Windows basta por sí solo: umbral del watchdog GUI subido de 6s a 12s, y
+  su espejo en firmware (silencio de tráfico entrante) de 15s a 25s — más
+  tolerancia a microcortes de radio sin perder la detección de un enlace
+  genuinamente muerto.
+
 ## Framing
 
 - Cada mensaje es **un JSON completo por línea**, terminado en `\n`.

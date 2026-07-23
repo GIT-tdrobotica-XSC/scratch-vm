@@ -76,17 +76,28 @@ class PlayGoBLE {
         this._lastRxTime = Date.now();
 
         // Vigilancia del enlace (cada 2s): (a) si la telemetria (10Hz, o
-        // 2.5Hz con MTU minimo) lleva >6s sin llegar, el enlace esta muerto
-        // aunque Chrome no haya disparado gattserverdisconnected -- cortar y
-        // avisar a la UI (antes quedaba "conectado" en pantalla pero muerto).
-        // (b) ping al firmware: mantiene fresco su watchdog de trafico
-        // entrante (si la placa deja de recibirlo >15s, corta y re-anuncia
-        // por su cuenta). Ademas, si el write del ping falla, ese error
-        // delata el enlace muerto por la via rapida (ver _writeMsg).
+        // 2.5Hz con MTU minimo) lleva sin llegar mas que el umbral, el enlace
+        // esta muerto aunque Chrome no haya disparado gattserverdisconnected
+        // -- cortar y avisar a la UI (antes quedaba "conectado" en pantalla
+        // pero muerto). (b) ping al firmware: mantiene fresco su watchdog de
+        // trafico entrante (si la placa deja de recibirlo >15s, corta y
+        // re-anuncia por su cuenta). Ademas, si el write del ping falla, ese
+        // error delata el enlace muerto por la via rapida (ver _writeMsg).
+        //
+        // Umbral en 12s (antes 6s, v2.1.2): se detecto que ESTE watchdog
+        // podia ser la causa de desconexiones reportadas como "el PC corto
+        // la conexion" (razon HCI 0x13 en el firmware) -- si Windows pausa
+        // brevemente el radio BLE para ahorro de energia (adaptador con
+        // "permitir apagar para ahorrar energia" activo), la telemetria se
+        // atrasa unos segundos sin que el enlace este realmente muerto, y
+        // este codigo llamaba gatt.disconnect() de forma prematura, lo cual
+        // el firmware ve exactamente como "el PC termino la conexion". 12s
+        // da mas margen a esos microcortes de radio sin dejar de detectar
+        // un enlace genuinamente muerto en tiempo razonable.
         this._watchTimer = setInterval(() => {
             if (!this.connected) return;
-            if (this._lastRxTime && Date.now() - this._lastRxTime > 6000) {
-                console.warn('[PlayGo BLE] Sin telemetría >6s, enlace muerto — desconectando');
+            if (this._lastRxTime && Date.now() - this._lastRxTime > 12000) {
+                console.warn('[PlayGo BLE] Sin telemetría >12s, enlace muerto — desconectando');
                 this._handleUnexpectedDisconnect();
                 return;
             }
