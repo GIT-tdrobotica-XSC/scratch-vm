@@ -158,10 +158,28 @@ class PlayGoPeripheral {
 
             this._setupDataHandler();
 
+            // Reporte de estado del enlace (reconectando / reconectado). Es la
+            // via por la que el software "avisa que pasa algo" sin quedarse
+            // mudo -- el usuario ve un toast en vez de un congelamiento.
+            this._activeTransport.onStatus = (state, detail) => {
+                this._reportConnectionStatus(state, detail);
+            };
+
+            // onDisconnect llega SOLO en perdida definitiva: USB desenchufado,
+            // o BLE tras agotar todos los reintentos de reconexion automatica.
             this._activeTransport.onDisconnect = () => {
-                console.log('Desconexión inesperada detectada');
+                console.warn('[PlayGo estado] Conexión perdida definitivamente');
+                this._connectionState = 'lost';
                 this._connectedDeviceId = null;
                 this._activeTransport = null;
+                // (1) Alerta VISIBLE al usuario ("se perdió la conexión con el
+                // dispositivo"). Antes solo se emitia PERIPHERAL_DISCONNECTED,
+                // que apagaba el estado en silencio sin explicar nada.
+                this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTION_LOST_ERROR, {
+                    message: 'Scratch lost connection to',
+                    extensionId: this._extensionId
+                });
+                // (2) Reset del boton de estado + toast "desconectado".
                 this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
             };
 
@@ -281,6 +299,34 @@ class PlayGoPeripheral {
     isConnected() {
         const transport = this._activeTransport;
         return !!(transport && transport.connected);
+    }
+
+    /**
+     * Punto único por el que los transportes (USB/BLE) reportan cambios de
+     * estado del enlace que NO son pérdida definitiva. La pérdida real va por
+     * onDisconnect (alerta + PERIPHERAL_DISCONNECTED). Centralizar aquí deja
+     * el log uniforme con prefijo "[PlayGo estado]" para depurar rápido, como
+     * se necesitó al cazar las desconexiones de Bluetooth.
+     *   - 'reconnecting': el enlace se cayó pero el transporte está
+     *     reintentando solo (BLE). Se avisa con un toast no-alarmante en vez
+     *     de dejar la app aparentemente congelada.
+     *   - 'connected': el reintento tuvo éxito. Se re-emite PERIPHERAL_CONNECTED
+     *     para reactivar el botón de estado y mostrar el toast "conectado".
+     */
+    _reportConnectionStatus(state, detail) {
+        this._connectionState = state;
+        if (state === 'reconnecting') {
+            console.warn(`[PlayGo estado] Reconectando…${detail ? ` (${detail})` : ''}`);
+            this._runtime.emit('PERIPHERAL_RECONNECTING', {extensionId: this._extensionId});
+        } else if (state === 'connected') {
+            console.log('[PlayGo estado] Reconectado');
+            this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTED);
+        }
+    }
+
+    getConnectionState() {
+        if (this.isConnected()) return 'connected';
+        return this._connectionState || 'disconnected';
     }
 
     getPeripheralDeviceIds() {

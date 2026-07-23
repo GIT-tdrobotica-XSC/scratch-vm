@@ -113,6 +113,27 @@ Detalles técnicos (implementados en `playgo-ble.js` GUI / NimBLE firmware):
   la fuente (batería 2A) no dio abasto con el pico de corriente — problema
   de hardware, no de software. Como mitigación, el brillo de los WS2812 se
   capa a 110/255 (~43%): 10 LEDs a blanco pleno son ~600mA ellos solos.
+- **Observabilidad del enlace (GUI+VM, ambos transportes):** cierre del ciclo
+  de robustez tras confirmar que las desconexiones eran del adaptador BT del
+  PC (al cambiar de computador desaparecieron). Objetivo: que ante *cualquier*
+  error de BLE o USB el software avise en vez de congelarse en silencio.
+  - **Pérdida definitiva** (USB desenchufado, o BLE tras agotar todos los
+    reintentos de reconexión automática): el peripheral emite
+    `PERIPHERAL_CONNECTION_LOST_ERROR` (alerta visible "se perdió la conexión")
+    **además** de `PERIPHERAL_DISCONNECTED` (resetea el botón de estado y
+    lanza el toast "desconectado"). Antes solo se emitía el segundo → la
+    pérdida era silenciosa.
+  - **Reconexión en curso** (BLE reintentando): el transporte reporta
+    `onStatus('reconnecting')` → el peripheral emite `PERIPHERAL_RECONNECTING`
+    (evento propio, reenviado por `virtual-machine.js`) → toast naranja
+    "Reconectando dispositivo…". El usuario ve que hay un bache y que el
+    software se está recuperando solo, no un congelamiento.
+  - **Reconexión exitosa**: `onStatus('connected')` → re-emite
+    `PERIPHERAL_CONNECTED` → toast verde "conectado" de vuelta.
+  - **Logging unificado**: todos los cambios de estado se registran con
+    prefijo `[PlayGo estado]` para depurar rápido (como se necesitó al cazar
+    las desconexiones BLE). `getConnectionState()` expone el estado actual
+    ('connected'/'reconnecting'/'lost'/'disconnected').
 - **La actualización de firmware sigue requiriendo USB** (esptool necesita el puerto
   serial físico) — no se puede flashear por BLE.
 - Requiere en `platformio.ini`: `h2zero/NimBLE-Arduino @ ^2.1` (y si el binario no

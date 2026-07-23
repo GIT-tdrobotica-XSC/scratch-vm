@@ -141,6 +141,12 @@ class VirtualMachine extends EventEmitter {
         this.runtime.on(Runtime.PERIPHERAL_CONNECTION_LOST_ERROR, data =>
             this.emit(Runtime.PERIPHERAL_CONNECTION_LOST_ERROR, data)
         );
+        // Evento propio de PlayGo: el enlace se cayó y el transporte está
+        // reintentando reconectar solo (no es pérdida definitiva). Se reenvía
+        // para que la GUI pueda mostrar un aviso "Reconectando…".
+        this.runtime.on('PERIPHERAL_RECONNECTING', data =>
+            this.emit('PERIPHERAL_RECONNECTING', data)
+        );
         this.runtime.on(Runtime.PERIPHERAL_SCAN_TIMEOUT, () =>
             this.emit(Runtime.PERIPHERAL_SCAN_TIMEOUT)
         );

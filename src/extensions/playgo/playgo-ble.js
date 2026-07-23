@@ -175,6 +175,10 @@ class PlayGoBLE {
     async _autoReconnect() {
         if (this._reconnecting) return;
         this._reconnecting = true;
+        // Avisar a la capa superior que el enlace se cayo pero estamos
+        // reintentando: muestra un toast "Reconectando…" en vez de dejar la
+        // app en silencio. Si todos los reintentos fallan, se llama onDisconnect.
+        if (this.onStatus) this.onStatus('reconnecting', 'Bluetooth');
 
         // Asegurar que la sesion GATT anterior quede cerrada antes de reabrir
         // (si el corte lo declaro nuestro watchdog, Chrome aun la cree viva).
@@ -196,6 +200,7 @@ class PlayGoBLE {
                 await this._openGatt();
                 this._reconnecting = false;
                 console.log('[PlayGo BLE] Reconectado automáticamente');
+                if (this.onStatus) this.onStatus('connected', 'Bluetooth');
                 return;
             } catch (err) {
                 console.warn('[PlayGo BLE] Reintento de conexión falló:', err.message || err);
