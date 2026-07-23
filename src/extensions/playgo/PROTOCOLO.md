@@ -115,8 +115,21 @@ Detalles técnicos (implementados en `playgo-ble.js` GUI / NimBLE firmware):
   capa a 110/255 (~43%): 10 LEDs a blanco pleno son ~600mA ellos solos.
 - **La actualización de firmware sigue requiriendo USB** (esptool necesita el puerto
   serial físico) — no se puede flashear por BLE.
-- Requiere en `platformio.ini`: `h2zero/NimBLE-Arduino @ ^1.4` (y si el binario no
+- Requiere en `platformio.ini`: `h2zero/NimBLE-Arduino @ ^2.1` (y si el binario no
   cabe en la partición por defecto: `board_build.partitions = huge_app.csv`).
+  **Actualizado de 1.4 a 2.x en fw v2.1.0**: la 1.4 no expone el código de
+  razón de las desconexiones (imposible diagnosticar las caídas "de la nada"
+  que ocurrían solo por Bluetooth con carga liviana); la 2.x sí — el firmware
+  ahora imprime en el monitor serial la razón decodificada de cada
+  desconexión (`SUPERVISION TIMEOUT` = radio/alimentación, `REMOTE
+  TERMINATED` = el PC cortó, `MIC FAILURE` = interferencia, etc.), además de
+  traer años de fixes de estabilidad para el S3. El supervision timeout
+  solicitado subió de 4s a 6s (más tolerancia a microcortes; la recuperación
+  la garantiza el latido). Nota de contexto: las desconexiones usando
+  motores+servos+LEDs+sonido a la vez ocurrieron por **USB** (sospecha:
+  brownout — el diagnóstico de causa de reset lo confirmará); las caídas por
+  **BLE** ocurren con carga liviana y son las que el código de razón va a
+  explicar.
 
 ## Framing
 
