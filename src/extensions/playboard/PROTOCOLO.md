@@ -23,8 +23,8 @@ limitaciones del ATmega328p (2 KB de SRAM, 32 KB de flash).
 | A1, A2, A3 | Entradas analógicas |
 | A4, A5 | I2C → **pantalla OLED** (SSD1306, dir. típica 0x3C) |
 | D2, D4, D7, D8, D9, D10 | Entrada/Salida digital |
-| D3, D11 | Driver Motor **M1** (H-puente, doble PWM) |
-| D5, D6 | Driver Motor **M2** (H-puente, doble PWM) |
+| D6, D5 | Driver Motor **M1** (H-puente, doble PWM) |
+| D11, D3 | Driver Motor **M2** (H-puente, doble PWM) |
 | D12, D13 | Botones 1 y 2 |
 
 > **Nota SRAM:** el framebuffer del SSD1306 128×64 ocupa ~1 KB (la mitad de la
@@ -54,7 +54,9 @@ Cada motor es un H-puente de doble PWM. `speed` va de -100 a 100:
 - `speed < 0`: `analogWrite(pinA, 0); analogWrite(pinB, map(-speed,0,100,0,255));`
 - `speed == 0`: ambos pines a 0.
 
-M1 = (D3, D11), M2 = (D5, D6). Los cuatro son pines PWM del UNO.
+M1 = (D6, D5), M2 = (D11, D3) — confirmado contra la serigrafía real de la
+placa (rótulos "M1"/"M2" junto al chip driver + LEDs indicadoras D6/D5/D11/D3
+en ese orden). Los cuatro son pines PWM del UNO.
 
 | Comando | Campos | Efecto |
 |---|---|---|

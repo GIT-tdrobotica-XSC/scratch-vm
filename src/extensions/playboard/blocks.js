@@ -14,8 +14,8 @@ const PlayBoardSerial = require('./playboard-serial');
  *   A1, A2, A3    → Entradas analógicas
  *   A4, A5        → I2C (pantalla OLED)
  *   D2,D4,D7,D8,D9,D10 → Entrada/Salida digital
- *   D3, D11       → Driver Motor M1 (H-puente doble PWM)
- *   D5, D6        → Driver Motor M2 (H-puente doble PWM)
+ *   D6, D5        → Driver Motor M1 (H-puente doble PWM)
+ *   D11, D3       → Driver Motor M2 (H-puente doble PWM)
  *   D12, D13      → Botones 1 y 2
  */
 class PlayBoardPeripheral {

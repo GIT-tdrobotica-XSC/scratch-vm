@@ -31,8 +31,10 @@ bool oledOk = false;
 
 // ── Pines ────────────────────────────────────────────────────────────────────
 // Motores (H-puente doble PWM). Los 4 son pines PWM del UNO.
-const uint8_t M1_A = 3,  M1_B = 11;   // Motor M1
-const uint8_t M2_A = 5,  M2_B = 6;    // Motor M2
+// Mapeo confirmado contra la serigrafía real de la placa (rótulos "M1"/"M2"
+// junto al chip driver + LEDs indicadoras D6/D5/D11/D3 en ese orden).
+const uint8_t M1_A = 6,  M1_B = 5;    // Motor M1
+const uint8_t M2_A = 11, M2_B = 3;    // Motor M2
 
 // Entrada/Salida digital de propósito general.
 const uint8_t DIO[] = {2, 4, 7, 8, 9, 10};
