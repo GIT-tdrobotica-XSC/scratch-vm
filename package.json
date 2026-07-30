@@ -24,6 +24,8 @@
     "docs": "jsdoc -c .jsdoc.json",
     "i18n:src": "mkdirp translations/core && format-message extract --out-file translations/core/en.json src/extensions/**/index.js",
     "i18n:push": "tx-push-src scratch-editor extensions translations/core/en.json",
+    "isa:gen": "node tools/gen-isa-header.js",
+    "isa:check": "node tools/gen-isa-header.js --check",
     "lint": "eslint . && format-message lint src/**/*.js",
     "prepare": "husky install",
     "prepublish": "in-publish && npm run build || not-in-publish",
@@ -31,7 +33,7 @@
     "tap": "tap ./test/{unit,integration}/*.js",
     "tap:unit": "tap ./test/unit/*.js",
     "tap:integration": "tap ./test/integration/*.js",
-    "test": "npm run lint && npm run tap",
+    "test": "npm run lint && npm run isa:check && npm run tap",
     "watch": "webpack --progress --watch",
     "version": "json -f package.json -I -e \"this.repository.sha = '$(git log -n1 --pretty=format:%H)'\""
   },
