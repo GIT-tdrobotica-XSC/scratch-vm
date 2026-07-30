@@ -27,6 +27,7 @@ const builtinExtensions = {
     playiot: () => require('../extensions/playiot'),
     playme: () => require('../extensions/playme'),
     playgo: () => require('../extensions/playgo'),
+    playboard: () => require('../extensions/playboard'),
     teachablemachine: () => require('../extensions/teachablemachine'),
 };
 
