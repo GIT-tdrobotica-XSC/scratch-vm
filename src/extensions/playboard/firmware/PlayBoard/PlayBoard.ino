@@ -55,6 +55,18 @@ uint8_t lineLen = 0;
 unsigned long lastTelemetry = 0;
 const unsigned long TELEMETRY_MS = 100;
 
+// ── Forward declarations (requeridas por PlatformIO) ──────────────────────────
+void readSerial();
+void handleLine(const char* line);
+void execCommand(JsonObject cmd);
+void setMotor(int motor, int speed);
+void stopMotors();
+void doDigitalWrite(int pin, int value);
+void oledFlush();
+void oledLineText(int line, const char* text);
+void oledNumber(int line, const char* label, long value);
+void sendTelemetry();
+
 // ─────────────────────────────────────────────────────────────────────────────
 void setup() {
     Serial.begin(115200);
