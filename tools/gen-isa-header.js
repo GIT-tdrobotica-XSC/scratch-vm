@@ -184,6 +184,20 @@ const buildHeader = function () {
     return lines.join('\n');
 };
 
+/**
+ * Normaliza los finales de línea antes de comparar.
+ *
+ * En Windows, git convierte el archivo a CRLF al hacer checkout mientras que
+ * el generador escribe LF. Sin esto, `--check` fallaría siempre en las
+ * máquinas del equipo aunque el contenido fuera idéntico -- y una alarma que
+ * salta siempre es una alarma que se acaba ignorando, que es justo lo que no
+ * puede pasar con la protección de la ISA.
+ *
+ * @param {string} text Contenido del archivo.
+ * @returns {string} El mismo contenido con finales de línea LF.
+ */
+const normalizeEol = text => text.replace(/\r\n/g, '\n');
+
 const content = buildHeader();
 const checkOnly = process.argv.includes('--check');
 
@@ -195,7 +209,7 @@ if (checkOnly) {
         console.error(`✗ Falta ${path.relative(process.cwd(), OUTPUT_PATH)}. Corre: npm run isa:gen`);
         process.exit(1);
     }
-    if (current !== content) {
+    if (normalizeEol(current) !== normalizeEol(content)) {
         console.error(
             '✗ playcode_isa.h no coincide con src/compiler/isa.js.\n' +
             '  La ISA cambio y el header no se regenero (o se edito a mano).\n' +

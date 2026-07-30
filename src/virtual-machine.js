@@ -1647,8 +1647,38 @@ class VirtualMachine extends EventEmitter {
     }
 
     /**
+     * Compile a device target's blocks to bytecode that the board can run on
+     * its own, with no computer attached.
+     *
+     * Lives here rather than in the GUI so it stays testable in Node without a
+     * browser, and so the GUI only has to compile, show progress and show
+     * errors.
+     *
+     * @param {string} targetId - the id of a target created with createDeviceTarget
+     * @param {object} [options] - options, currently {autorun: boolean}
+     * @returns {object} {bytes, warnings, stats}
+     * @throws {CompileErrorGroup} With every error found in `.errors`, not just
+     *     the first: a child with three bad blocks should see all three
+     *     highlighted at once.
+     */
+    compileDeviceProgram (targetId, options) {
+        const {compileBlocks} = require('./compiler');
+        const {CompileError, CompileErrorGroup, ErrorCode} = require('./compiler/errors');
+
+        const target = this.runtime.getTargetById(targetId);
+        if (!target || !target.isDeviceTarget) {
+            throw new CompileErrorGroup([new CompileError(
+                ErrorCode.UNSUPPORTED_BLOCK,
+                'No encontré el dispositivo al que querías subir el programa.'
+            )]);
+        }
+
+        return compileBlocks(target.blocks, target.deviceExtensionId, options);
+    }
+
+    /**
      * Delete a device target created with createDeviceTarget.
-     * @param {string} targetId
+     * @param {string} targetId - the id of the device target to remove
      * @returns {void}
      */
     deleteDeviceTarget (targetId) {
