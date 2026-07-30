@@ -130,11 +130,12 @@ Enviar periódicamente (≈100 ms). Todas las entradas son de **solo lectura**:
 | `btn1`, `btn2` | D12, D13 (`digitalRead`, INPUT_PULLUP) | 0/1 |
 | `version` | versión del firmware (string) | — |
 
-> Con `INPUT_PULLUP`, un botón sin presionar lee **1** y presionado lee **0**.
-> El firmware debe **invertir** la lógica antes de reportar (`btn1`/`btn2` = 1
-> cuando el botón está presionado), para que el bloque “Botón presionado?”
-> funcione de forma intuitiva. Lo mismo aplica a las entradas digitales si usan
-> pull-up y pulsadores a GND.
+> **Confirmado en hardware real:** en esta placa los botones D12/D13 leen
+> **HIGH cuando están presionados** (al revés de lo esperado con
+> `INPUT_PULLUP` + botón-a-GND). El firmware invierte la lectura antes de
+> reportar (`btn1`/`btn2` = 1 cuando el botón está presionado), para que el
+> bloque "Botón presionado?" funcione de forma intuitiva, igual que en los
+> demás dispositivos.
 
 ---
 

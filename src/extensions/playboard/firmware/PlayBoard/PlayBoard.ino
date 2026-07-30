@@ -270,9 +270,11 @@ void sendTelemetry() {
         }
     }
 
-    // Botones con pull-up: presionado = LOW → invertir para reportar 1 = presionado.
-    Serial.print(F(",\"btn1\":")); Serial.print(digitalRead(BTN1) == LOW ? 1 : 0);
-    Serial.print(F(",\"btn2\":")); Serial.print(digitalRead(BTN2) == LOW ? 1 : 0);
+    // Botones: en esta placa presionado = HIGH (confirmado en hardware real,
+    // al reves de lo esperado con INPUT_PULLUP+boton-a-GND) → invertir para
+    // reportar 1 = presionado, igual que los demas dispositivos.
+    Serial.print(F(",\"btn1\":")); Serial.print(digitalRead(BTN1) == HIGH ? 1 : 0);
+    Serial.print(F(",\"btn2\":")); Serial.print(digitalRead(BTN2) == HIGH ? 1 : 0);
 
     Serial.print(F("},\"version\":\"1.0\"}\n"));
 }
