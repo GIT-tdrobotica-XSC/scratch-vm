@@ -210,6 +210,26 @@ if (vmRunning && !isProgCommand(command) && command != "ping") {
 | Uploader JS (`extensions/common/program-uploader.js`) | ✅ hecho, con tests |
 | Placa falsa + tests de punta a punta | ✅ hecho (56 asserts) |
 | Enganche en el peripheral de PlayGo | ✅ hecho |
-| `prog*` en el firmware C++ | ⛔ pendiente (F2 firmware) |
-| NVS + arranque solo + escotilla B0 | ⛔ pendiente (F2 firmware) |
-| Intérprete de bytecode en C++ | ⛔ pendiente (F3) |
+| Botón e interfaz en la GUI | ✅ hecho |
+| `prog*` en el firmware C++ (`vm.cpp`) | ✅ escrito y compila |
+| NVS + arranque solo + escotilla B0 | ✅ escrito y compila |
+| Intérprete de bytecode en C++ (`vm.cpp`) | ✅ escrito y compila |
+| **Prueba con la placa en la mano** | ⛔ **pendiente** |
+
+El firmware compila para ESP32-S3 (RAM 15 %, Flash 19 %) pero **todavía no se ha
+ejecutado en hardware**. Todo lo verificado hasta aquí es en JS contra la placa
+falsa; el C++ sólo tiene a su favor que compila y que es un port directo del
+intérprete de referencia.
+
+### Las dos sumas de comprobación (dónde es fácil equivocarse)
+
+Hay **dos** CRC distintos y confundirlos hace fallar *todas* las subidas con un
+mensaje que parece un problema del cable:
+
+| | Qué cubre | Quién lo usa |
+|---|---|---|
+| **Embebido** | Todo el binario **menos** sus 2 últimos bytes | Lo escribe el serializador; valida el formato al cargar |
+| **Completo** | El binario **entero**, incluidos esos 2 bytes | Viaja en `progBegin.crc` y es el que compara la GUI |
+
+Para un programa de 22 bytes: embebido = 34375, completo = 60424. No son
+intercambiables.
