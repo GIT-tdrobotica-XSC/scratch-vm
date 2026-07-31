@@ -2,6 +2,7 @@ const BlockType = require('../../extension-support/block-type');
 const ArgumentType = require('../../extension-support/argument-type');
 const PlayGoSerial = require('./playgo-serial');
 const PlayGoBLE = require('./playgo-ble');
+const ProgramUploader = require('../common/program-uploader');
 
 class PlayGoPeripheral {
     constructor(runtime, extensionId) {
@@ -49,6 +50,17 @@ class PlayGoPeripheral {
         this._lastRgbJson = null;    // ultimo comando setRGB enviado (JSON literal)
         this._toneActive = false;    // true tras enviar cualquier tone (dedupe de stopTone)
         this._lastServoAngles = {};  // ultimo angulo enviado POR PIN {gpio: angle}
+
+        // Subida de programas compilados (modo autonomo). El uploader es
+        // agnostico del transporte: se le pasa send/isConnected y el peripheral
+        // le enruta las respuestas desde _setupDataHandler().
+        this._uploader = new ProgramUploader({
+            send: msg => this.send(msg),
+            isConnected: () => this.isConnected()
+        }, { boardId: 1 /* PC_BOARD_PLAYGO */ });
+        // Estado del programa guardado en la placa, tal como lo reporta su
+        // telemetria ({st, sz, crc, err}). La GUI lo muestra en el panel.
+        this.programStatus = null;
 
         this._runtime.registerPeripheralExtension(extensionId, this);
         this._autoScan();
@@ -226,6 +238,13 @@ class PlayGoPeripheral {
                 this.deviceFirmwareVersion = data.version;
                 console.log('PlayGo Firmware detectado:', data.version);
             }
+            // Acks y estado del programa autonomo (modo compilado).
+            if (data.prog || typeof data.isa === 'number') {
+                this._uploader.handleTelemetry(data);
+                if (this._uploader.programStatus) {
+                    this.programStatus = this._uploader.programStatus;
+                }
+            }
         };
 
         // Obtener versión del servidor una sola vez por conexión
@@ -366,6 +385,62 @@ class PlayGoPeripheral {
     // terminar", así que cada comando de movimiento lleva un moveId propio.
     // El firmware debe reportar moveId/moveDone:1 en la telemetría cuando el
     // movimiento termina (y mantenerlo en 1 hasta el siguiente movimiento).
+    // -- Modo autonomo (programa compilado en la placa) --------------------
+
+    /**
+     * Sube un programa compilado y lo deja corriendo en la placa.
+     *
+     * El tamano de trozo depende del transporte: por BLE se usan trozos mucho
+     * mas pequenos porque cada escritura se trocea en paquetes de 20 bytes y
+     * una linea larga genera una rafaga de escrituras GATT -- el patron de
+     * congestion detras de las desconexiones documentadas en PROTOCOLO.md.
+     */
+    async uploadProgram(bytes, options) {
+        this._uploader._transport = (this._activeTransport === this._ble) ? 'ble' : 'usb';
+        const stats = await this._uploader.upload(bytes, options);
+        // Tras subir manda el programa de la placa: los caches de deduplicacion
+        // del modo directo quedan obsoletos y hay que limpiarlos para que el
+        // primer comando tras detenerlo vuelva a enviarse de verdad.
+        this._resetDedupeCaches();
+        return stats;
+    }
+
+    /** Detiene el programa autonomo y deja el hardware en estado seguro. */
+    async stopProgram() {
+        const ack = await this._uploader.stop();
+        this._resetDedupeCaches();
+        return ack;
+    }
+
+    /** Borra el programa guardado en la placa. */
+    eraseProgram() {
+        return this._uploader.erase();
+    }
+
+    /** Pregunta a la placa que programa tiene guardado. */
+    async queryProgram() {
+        const info = await this._uploader.info();
+        this.programStatus = info;
+        return info;
+    }
+
+    /** True si la placa esta corriendo su propio programa. */
+    isRunningProgram() {
+        return !!(this.programStatus && this.programStatus.st === 'running');
+    }
+
+    /**
+     * Limpia los caches de deduplicacion. Existen para proteger el enlace
+     * serial/BLE en modo directo; tras un cambio de modo estan desfasados.
+     */
+    _resetDedupeCaches() {
+        this._heldFreq = null;
+        this._lastMotorState = null;
+        this._lastRgbJson = null;
+        this._toneActive = false;
+        this._lastServoAngles = {};
+    }
+
     _nextMoveId() {
         this._moveCounter = (this._moveCounter || 0) + 1;
         return this._moveCounter;
