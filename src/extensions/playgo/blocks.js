@@ -424,9 +424,16 @@ class PlayGoPeripheral {
         return info;
     }
 
-    /** True si la placa esta corriendo su propio programa. */
+    /**
+     * True si la placa esta corriendo su propio programa.
+     *
+     * Exige estar CONECTADO a proposito: sin enlace no llega telemetria y
+     * programStatus se queda congelado en su ultimo valor. Sin esta guarda, un
+     * nino que sube el programa y desenchufa el robot (que es justo el flujo
+     * que buscamos) dejaria la bandera verde deshabilitada para siempre.
+     */
     isRunningProgram() {
-        return !!(this.programStatus && this.programStatus.st === 'running');
+        return !!(this.isConnected() && this.programStatus && this.programStatus.st === 'running');
     }
 
     /**
