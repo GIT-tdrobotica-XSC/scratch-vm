@@ -50,6 +50,7 @@ class PlayGoPeripheral {
         this._lastRgbJson = null;    // ultimo comando setRGB enviado (JSON literal)
         this._toneActive = false;    // true tras enviar cualquier tone (dedupe de stopTone)
         this._lastServoAngles = {};  // ultimo angulo enviado POR PIN {gpio: angle}
+        this._lastOledJson = null;   // ultimo comando de OLED (menos oledDisplay)
 
         // Subida de programas compilados (modo autonomo). El uploader es
         // agnostico del transporte: se le pasa send/isConnected y el peripheral
@@ -221,6 +222,26 @@ class PlayGoPeripheral {
     async send(msg) {
         const transport = this._activeTransport || this._serial;
         return transport.write(msg);
+    }
+
+    /**
+     * Envía un comando de OLED saltandose las repeticiones consecutivas.
+     *
+     * Los demas grupos de bloques (motores, RGB, servos, sonido) ya tenian su
+     * cache de deduplicacion; el OLED no. Con varios "por siempre" en paralelo
+     * eso son decenas de lineas identicas por segundo -- p.ej. tres bucles en
+     * su rama "si no" mandando el MISMO oledClear en cada vuelta -- que
+     * congestionan el enlace y se sienten como lag.
+     *
+     * Repetir un comando de OLED no cambia lo que se ve, asi que saltarlo es
+     * seguro. La excepcion es oledDisplay: es un volcado, no un estado, y dos
+     * volcados seguidos son legitimamente distintos (dibujar, volcar, dibujar
+     * otra cosa, volcar) -- ese NO se deduplica.
+     */
+    async sendOled(msg) {
+        if (msg === this._lastOledJson) return;
+        this._lastOledJson = msg;
+        return this.send(msg);
     }
 
     _setupDataHandler() {
@@ -446,6 +467,7 @@ class PlayGoPeripheral {
         this._lastRgbJson = null;
         this._toneActive = false;
         this._lastServoAngles = {};
+        this._lastOledJson = null;
     }
 
     _nextMoveId() {
@@ -1319,7 +1341,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'oledText', text: args.TEXT, size: parseInt(args.SIZE) }]
             });
-            await this.peripheral.send(json);
+            await this.peripheral.sendOled(json);
         } catch (e) {
             console.error('Error en oledText:', e);
         }
@@ -1337,7 +1359,7 @@ class PlayGo {
                     value: parseInt(args.VALUE)
                 }]
             });
-            await this.peripheral.send(json);
+            await this.peripheral.sendOled(json);
         } catch (e) {
             console.error('Error en oledNumber:', e);
         }
@@ -1350,7 +1372,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'oledClear' }]
             });
-            await this.peripheral.send(json);
+            await this.peripheral.sendOled(json);
         } catch (e) {
             console.error('Error en oledClear:', e);
         }
@@ -1363,7 +1385,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'oledLine', line: parseInt(args.LINE), text: args.TEXT }]
             });
-            await this.peripheral.send(json);
+            await this.peripheral.sendOled(json);
         } catch (e) {
             console.error('Error en oledLine:', e);
         }
@@ -1382,7 +1404,7 @@ class PlayGo {
                     size: parseInt(args.SIZE)
                 }]
             });
-            await this.peripheral.send(json);
+            await this.peripheral.sendOled(json);
         } catch (e) {
             console.error('Error en oledTextXY:', e);
         }
@@ -1395,7 +1417,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'oledEmoji', emoji: args.EMOJI, x: parseInt(args.X), y: parseInt(args.Y) }]
             });
-            await this.peripheral.send(json);
+            await this.peripheral.sendOled(json);
         } catch (e) {
             console.error('Error en oledEmoji:', e);
         }
@@ -1412,7 +1434,7 @@ class PlayGo {
                     x1: parseInt(args.X1), y1: parseInt(args.Y1)
                 }]
             });
-            await this.peripheral.send(json);
+            await this.peripheral.sendOled(json);
         } catch (e) {
             console.error('Error en oledDrawLine:', e);
         }
@@ -1429,7 +1451,7 @@ class PlayGo {
                     w: parseInt(args.W), h: parseInt(args.H)
                 }]
             });
-            await this.peripheral.send(json);
+            await this.peripheral.sendOled(json);
         } catch (e) {
             console.error('Error en oledDrawRect:', e);
         }
@@ -1446,7 +1468,7 @@ class PlayGo {
                     w: parseInt(args.W), h: parseInt(args.H)
                 }]
             });
-            await this.peripheral.send(json);
+            await this.peripheral.sendOled(json);
         } catch (e) {
             console.error('Error en oledFillRect:', e);
         }
@@ -1459,7 +1481,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'oledDrawCircle', x: parseInt(args.X), y: parseInt(args.Y), r: parseInt(args.R) }]
             });
-            await this.peripheral.send(json);
+            await this.peripheral.sendOled(json);
         } catch (e) {
             console.error('Error en oledDrawCircle:', e);
         }
@@ -1472,7 +1494,7 @@ class PlayGo {
                 command: 'outputsQueue',
                 testValue: [{ command: 'oledDrawPixel', x: parseInt(args.X), y: parseInt(args.Y) }]
             });
-            await this.peripheral.send(json);
+            await this.peripheral.sendOled(json);
         } catch (e) {
             console.error('Error en oledDrawPixel:', e);
         }
