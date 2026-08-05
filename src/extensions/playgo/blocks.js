@@ -242,7 +242,7 @@ class PlayGoPeripheral {
      * volcados seguidos son legitimamente distintos (dibujar, volcar, dibujar
      * otra cosa, volcar) -- ese NO se deduplica.
      */
-    async sendOled(msg) {
+    sendOled (msg) {
         if (msg === this._lastOledJson) return;
         this._lastOledJson = msg;
         return this.send(msg);
@@ -420,7 +420,7 @@ class PlayGoPeripheral {
      * una linea larga genera una rafaga de escrituras GATT -- el patron de
      * congestion detras de las desconexiones documentadas en PROTOCOLO.md.
      */
-    async uploadProgram(bytes, options) {
+    async uploadProgram (bytes, options) {
         this._uploader._transport = (this._activeTransport === this._ble) ? 'ble' : 'usb';
         const stats = await this._uploader.upload(bytes, options);
         // Tras subir manda el programa de la placa: los caches de deduplicacion
@@ -431,19 +431,19 @@ class PlayGoPeripheral {
     }
 
     /** Detiene el programa autonomo y deja el hardware en estado seguro. */
-    async stopProgram() {
+    async stopProgram () {
         const ack = await this._uploader.stop();
         this._resetDedupeCaches();
         return ack;
     }
 
     /** Borra el programa guardado en la placa. */
-    eraseProgram() {
+    eraseProgram () {
         return this._uploader.erase();
     }
 
     /** Pregunta a la placa que programa tiene guardado. */
-    async queryProgram() {
+    async queryProgram () {
         const info = await this._uploader.info();
         this.programStatus = info;
         return info;
@@ -457,7 +457,7 @@ class PlayGoPeripheral {
      * nino que sube el programa y desenchufa el robot (que es justo el flujo
      * que buscamos) dejaria la bandera verde deshabilitada para siempre.
      */
-    isRunningProgram() {
+    isRunningProgram () {
         return !!(this.isConnected() && this.programStatus && this.programStatus.st === 'running');
     }
 
@@ -477,7 +477,7 @@ class PlayGoPeripheral {
      * placa. Sin latido, el firmware los apaga solo a los 500 ms -- que es
      * justo lo que queremos cuando se cierra el control o se pierde el enlace.
      */
-    startRemote() {
+    startRemote () {
         if (this._remoteHeartbeat) return;
         this._remoteMask = 0;
         this._sendRemoteMask();
@@ -485,7 +485,7 @@ class PlayGoPeripheral {
     }
 
     /** Cierra el control y suelta todos los botones. */
-    stopRemote() {
+    stopRemote () {
         if (this._remoteHeartbeat) {
             clearInterval(this._remoteHeartbeat);
             this._remoteHeartbeat = null;
@@ -499,7 +499,7 @@ class PlayGoPeripheral {
      * @param {number} index Boton 0-7.
      * @param {boolean} pressed Si esta presionado.
      */
-    setRemoteButton(index, pressed) {
+    setRemoteButton (index, pressed) {
         const i = parseInt(index, 10);
         if (isNaN(i) || i < 0 || i > 7) return;
         const bit = 1 << i;
@@ -512,7 +512,7 @@ class PlayGoPeripheral {
     }
 
     /** @returns {boolean} True si ese boton del control esta presionado. */
-    isRemoteButtonPressed(index) {
+    isRemoteButtonPressed (index) {
         const i = parseInt(index, 10);
         if (isNaN(i) || i < 0 || i > 7) return false;
         return (this._remoteMask & (1 << i)) !== 0;
@@ -523,7 +523,7 @@ class PlayGoPeripheral {
      * mismo valor es lo que le dice a la placa "sigo aqui", y es lo que hace
      * que su apagado por silencio funcione.
      */
-    _sendRemoteMask() {
+    _sendRemoteMask () {
         if (!this.isConnected()) return;
         this.send(JSON.stringify({
             command: 'outputsQueue',
@@ -535,7 +535,7 @@ class PlayGoPeripheral {
      * Limpia los caches de deduplicacion. Existen para proteger el enlace
      * serial/BLE en modo directo; tras un cambio de modo estan desfasados.
      */
-    _resetDedupeCaches() {
+    _resetDedupeCaches () {
         this._heldFreq = null;
         this._lastMotorState = null;
         this._lastRgbJson = null;
@@ -1323,7 +1323,7 @@ class PlayGo {
      * En modo autonomo este handler no corre -- lo hace la placa, con el
      * estado que le llega por remoteKeys.
      */
-    readRemoteButton(args) {
+    readRemoteButton (args) {
         return this.peripheral.isRemoteButtonPressed(args.BUTTON);
     }
 
