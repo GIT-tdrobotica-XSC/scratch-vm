@@ -52,6 +52,10 @@ class PlayGoPeripheral {
         this._lastServoAngles = {};  // ultimo angulo enviado POR PIN {gpio: angle}
         this._lastOledJson = null;   // ultimo comando de OLED (menos oledDisplay)
 
+        // Control remoto: mascara de 8 bits (un bit por boton) y su latido.
+        this._remoteMask = 0;
+        this._remoteHeartbeat = null;
+
         // Subida de programas compilados (modo autonomo). El uploader es
         // agnostico del transporte: se le pasa send/isConnected y el peripheral
         // le enruta las respuestas desde _setupDataHandler().
@@ -457,6 +461,76 @@ class PlayGoPeripheral {
         return !!(this.isConnected() && this.programStatus && this.programStatus.st === 'running');
     }
 
+    // ── Control remoto ────────────────────────────────────────────────────
+    //
+    // El control es un SENSOR, no una orden: no manda al robot, solo actualiza
+    // un estado que el programa del nino consulta cuando quiere. Por eso puede
+    // convivir con el modo autonomo -- el programa de la placa sigue siendo el
+    // unico dueno del hardware.
+    //
+    // El estado se guarda TAMBIEN aqui, no solo en la placa, para que en modo
+    // en vivo el bloque responda al instante sin esperar un viaje de ida y
+    // vuelta por el enlace.
+
+    /**
+     * Abre el control: empieza el latido que mantiene vivos los botones en la
+     * placa. Sin latido, el firmware los apaga solo a los 500 ms -- que es
+     * justo lo que queremos cuando se cierra el control o se pierde el enlace.
+     */
+    startRemote() {
+        if (this._remoteHeartbeat) return;
+        this._remoteMask = 0;
+        this._sendRemoteMask();
+        this._remoteHeartbeat = setInterval(() => this._sendRemoteMask(), 200);
+    }
+
+    /** Cierra el control y suelta todos los botones. */
+    stopRemote() {
+        if (this._remoteHeartbeat) {
+            clearInterval(this._remoteHeartbeat);
+            this._remoteHeartbeat = null;
+        }
+        this._remoteMask = 0;
+        this._sendRemoteMask();
+    }
+
+    /**
+     * Marca un boton del control como presionado o suelto.
+     * @param {number} index Boton 0-7.
+     * @param {boolean} pressed Si esta presionado.
+     */
+    setRemoteButton(index, pressed) {
+        const i = parseInt(index, 10);
+        if (isNaN(i) || i < 0 || i > 7) return;
+        const bit = 1 << i;
+        const next = pressed ? (this._remoteMask | bit) : (this._remoteMask & ~bit);
+        if (next === this._remoteMask) return;
+        this._remoteMask = next;
+        // Se envia en el momento, sin esperar al latido: la respuesta tiene que
+        // sentirse inmediata al pulsar.
+        this._sendRemoteMask();
+    }
+
+    /** @returns {boolean} True si ese boton del control esta presionado. */
+    isRemoteButtonPressed(index) {
+        const i = parseInt(index, 10);
+        if (isNaN(i) || i < 0 || i > 7) return false;
+        return (this._remoteMask & (1 << i)) !== 0;
+    }
+
+    /**
+     * Envia el estado del control. NO se deduplica a proposito: el reenvio del
+     * mismo valor es lo que le dice a la placa "sigo aqui", y es lo que hace
+     * que su apagado por silencio funcione.
+     */
+    _sendRemoteMask() {
+        if (!this.isConnected()) return;
+        this.send(JSON.stringify({
+            command: 'outputsQueue',
+            testValue: [{ command: 'remoteKeys', mask: this._remoteMask }]
+        })).catch(() => { });
+    }
+
     /**
      * Limpia los caches de deduplicacion. Existen para proteger el enlace
      * serial/BLE en modo directo; tras un cambio de modo estan desfasados.
@@ -603,6 +677,15 @@ class PlayGo {
                     text: 'Botón [BUTTON] presionado?',
                     arguments: {
                         BUTTON: { type: ArgumentType.STRING, menu: 'buttonsPlayGo', defaultValue: '0' }
+                    },
+                    category: 'Botones'
+                },
+                {
+                    opcode: 'readRemoteButton',
+                    blockType: BlockType.BOOLEAN,
+                    text: 'Control remoto: [BUTTON] presionado?',
+                    arguments: {
+                        BUTTON: { type: ArgumentType.STRING, menu: 'remoteButtons', defaultValue: '0' }
                     },
                     category: 'Botones'
                 },
@@ -905,6 +988,22 @@ class PlayGo {
                     // B0-B7 en la serigrafía de la placa: dos cruces direccionales de
                     // 4 botones cada una (B0-B3 izquierda, B4-B7 derecha).
                     items: ['0', '1', '2', '3', '4', '5', '6', '7'].map(n => ({ text: `B${n}`, value: n }))
+                },
+                remoteButtons: {
+                    acceptReporters: false,
+                    // Cruceta + cuatro de accion, la disposicion de mando que
+                    // cualquier nino reconoce. Los indices 0-7 son los que
+                    // viajan a la placa; los simbolos son solo la etiqueta.
+                    items: [
+                        { text: '▲ arriba', value: '0' },
+                        { text: '▼ abajo', value: '1' },
+                        { text: '◀ izquierda', value: '2' },
+                        { text: '▶ derecha', value: '3' },
+                        { text: 'A', value: '4' },
+                        { text: 'B', value: '5' },
+                        { text: 'C', value: '6' },
+                        { text: 'D', value: '7' }
+                    ]
                 },
                 servoPorts: {
                     acceptReporters: false,
@@ -1213,6 +1312,19 @@ class PlayGo {
     readButtonPlayGo(args) {
         const value = this.peripheral.sensorData[`button_${args.BUTTON}`];
         return value === 1;
+    }
+
+    /**
+     * Lectura del control remoto en modo EN VIVO.
+     *
+     * Se lee del estado local del peripheral y no de la telemetria: el control
+     * vive en esta misma pagina, asi que el valor ya esta aqui y esperar el
+     * viaje de ida y vuelta solo anadiria retardo perceptible al pulsar.
+     * En modo autonomo este handler no corre -- lo hace la placa, con el
+     * estado que le llega por remoteKeys.
+     */
+    readRemoteButton(args) {
+        return this.peripheral.isRemoteButtonPressed(args.BUTTON);
     }
 
     // ── RGB ──────────────────────────────────────────────────────────────────

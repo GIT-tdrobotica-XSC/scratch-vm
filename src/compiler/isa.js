@@ -25,7 +25,13 @@
  * bytecode que el firmware interpretaría mal.
  * @type {number}
  */
-const ISA_VERSION = 1;
+// Historial:
+//   1 -- juego inicial.
+//   2 -- primitiva readRemote (control remoto). Es una primitiva añadida al
+//        final, pero la regla de arriba aplica igual: un firmware v1 tiene que
+//        rechazar el programa con un mensaje claro, no interpretar un id de
+//        hardware que no conoce.
+const ISA_VERSION = 2;
 
 /**
  * Identificadores de placa. Van en la cabecera para que una placa rechace un

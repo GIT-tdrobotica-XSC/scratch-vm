@@ -181,3 +181,83 @@ test('los avisos no impiden subir', async t => {
     t.ok(board.nvs.program, 'se subió igualmente');
     t.end();
 });
+
+test('★ el bloque del control remoto compila y se lee como sensor', async t => {
+    const {vm, targetId} = makeVmWithProgram(h => {
+        // si <control: arriba> entonces motores 60/60, si no detener
+        const cond = h.add('playgo_readRemoteButton', {fields: {BUTTON: '0'}});
+        const go = h.add('playgo_setMotorSpeeds', {
+            inputs: {LEFT: h.num(60), RIGHT: h.num(60)}
+        });
+        const halt = h.add('playgo_stopMotors');
+        const branch = h.add('control_if_else', {
+            inputs: {CONDITION: cond, SUBSTACK: go, SUBSTACK2: halt}
+        });
+        const forever = h.add('control_forever', {inputs: {SUBSTACK: branch}});
+        h.flag(forever);
+    });
+
+    const compiled = vm.compileDeviceProgram(targetId);
+    t.ok(compiled.bytes.length > 0, 'compila sin errores');
+
+    // Se sube y se guarda como cualquier otro programa.
+    const {board, uploader} = makeBoard();
+    await uploader.upload(compiled.bytes);
+    t.same(Array.from(board.nvs.program), Array.from(compiled.bytes));
+
+    // Con el boton "arriba" suelto, el robot no se mueve.
+    const quieto = new ReferenceVM(board.nvs.program, {
+        hwMap: playgo,
+        hardware: {call: () => 0}
+    });
+    quieto.run(50);
+    t.equal(quieto.log.filter(l => l.hw === 'setMotorSpeed').length, 0,
+        'sin control conectado el robot se queda quieto');
+    t.ok(quieto.log.some(l => l.hw === 'stopMotors'), 'y manda detener');
+
+    // Con el boton presionado, avanza.
+    const andando = new ReferenceVM(board.nvs.program, {
+        hwMap: playgo,
+        hardware: {
+            call: (name, args) => {
+                if (name === 'readRemote' && args[0] === 0) return 1;
+                return 0;
+            }
+        }
+    });
+    andando.run(50);
+    const arranques = andando.log.filter(l => l.hw === 'setMotorSpeed');
+    t.ok(arranques.length > 0, 'con el boton presionado avanza');
+    t.same(arranques[0].args, [60, 60]);
+    t.end();
+});
+
+test('un firmware con la ISA vieja rechaza un programa que usa el control', async t => {
+    const {vm, targetId} = makeVmWithProgram(h => {
+        const cond = h.add('playgo_readRemoteButton', {fields: {BUTTON: '4'}});
+        const body = h.add('playgo_stopMotors');
+        const branch = h.add('control_if', {inputs: {CONDITION: cond, SUBSTACK: body}});
+        h.flag(branch);
+    });
+    const compiled = vm.compileDeviceProgram(targetId);
+
+    // Una placa que aun anuncia ISA 1: debe rechazar, no interpretar un id de
+    // hardware que no conoce.
+    const board = new FakeBoard({boardId: playgo.boardId, isa: 1});
+    const io = {
+        isConnected: () => true,
+        send: line => Promise.resolve().then(() => board.receiveLine(line))
+    };
+    const uploader = new ProgramUploader(io, {transport: 'usb', boardId: playgo.boardId});
+    board.onLine = data => uploader.handleTelemetry(data);
+
+    try {
+        await uploader.upload(compiled.bytes);
+        t.fail('debio rechazarse');
+    } catch (err) {
+        t.equal(err.reason, 'isa');
+        t.match(err.message, /actualizar su firmware/);
+    }
+    t.equal(board.nvs.program, null, 'no guardo nada');
+    t.end();
+});

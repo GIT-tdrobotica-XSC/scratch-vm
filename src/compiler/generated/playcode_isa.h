@@ -5,7 +5,7 @@
  *  Regenerar: npm run isa:gen      (dentro de scratch-vm)
  *  Verificar: npm run isa:check    (corre solo en npm test)
  *
- *  sha256 de la fuente: 290d5c021796ec59dd77dec722ee92b2328ae48dd381eab62315373ef2d1ee54
+ *  sha256 de la fuente: 133cdf65851fc376fd0e51f4960a26b6b00403e45ca65efd15431a28ce3b1f91
  *
  *  Si editas este archivo a mano, el siguiente `npm test` fallara.
  *  Cambia isa.js y regenera.
@@ -18,7 +18,7 @@
 
 /* Version del juego de instrucciones. La placa la reporta en su
  * telemetria ("isa":N) y la valida al recibir un programa. */
-#define PC_ISA_VERSION 1
+#define PC_ISA_VERSION 2
 
 /* Identificadores de placa (van en la cabecera del programa). */
 #define PC_BOARD_PLAYGO 1
@@ -161,7 +161,8 @@ enum PcHwPlaygo {
     PC_HW_PLAYGO_READ_GPIO = 0x51,  /* FALTA EN EL FIRMWARE */
     PC_HW_PLAYGO_READ_ANALOG = 0x52,  /* FALTA EN EL FIRMWARE */
     PC_HW_PLAYGO_READ_ENCODER = 0x53,  /* FALTA EN EL FIRMWARE */
-    PC_HW_PLAYGO_MIC_LEVEL = 0x54  /* FALTA EN EL FIRMWARE */
+    PC_HW_PLAYGO_MIC_LEVEL = 0x54,  /* FALTA EN EL FIRMWARE */
+    PC_HW_PLAYGO_READ_REMOTE = 0x55  /* FALTA EN EL FIRMWARE */
 };
 
 /* Aridad de cada primitiva, indexada por id. El interprete DEBE
@@ -180,9 +181,9 @@ static const uint8_t PC_HW_ARGC_PLAYGO[] = {
     4, 3, 2, 0, 0xFF, 0xFF, 0xFF, 0xFF,
     2, 0, 1, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-    1, 1, 1, 1, 0
+    1, 1, 1, 1, 0, 1
 };
-#define PC_HW_COUNT_PLAYGO 30
-#define PC_HW_MAX_ID_PLAYGO 0x54
+#define PC_HW_COUNT_PLAYGO 31
+#define PC_HW_MAX_ID_PLAYGO 0x55
 
 #endif /* PLAYCODE_ISA_H */

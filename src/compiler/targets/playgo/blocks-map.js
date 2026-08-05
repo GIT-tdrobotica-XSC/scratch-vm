@@ -177,6 +177,14 @@ const BLOCKS = {
         post: AS_BOOLEAN
     },
 
+    // Botón del control remoto. El índice del menú ya es el número que espera
+    // la primitiva (0-7), así que no hace falta traducirlo.
+    playgo_readRemoteButton: {
+        hw: 'readRemote',
+        args: [{field: 'BUTTON', coerce: 'int'}],
+        post: AS_BOOLEAN
+    },
+
     // ── LEDs RGB ─────────────────────────────────────────────────────────
     // Los cinco bloques RGB colapsan en la MISMA primitiva `setRGB(led,r,g,b)`,
     // con `led = -1` para "todos". Las tablas de colores se pliegan aquí.

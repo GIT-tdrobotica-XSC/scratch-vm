@@ -119,7 +119,24 @@ const HW = {
     readGpio: {id: 0x51, argc: 1, kind: 'reporter', args: ['n'], needsFirmware: true},
     readAnalog: {id: 0x52, argc: 1, kind: 'reporter', args: ['n'], needsFirmware: true},
     readEncoder: {id: 0x53, argc: 1, kind: 'reporter', args: ['side'], needsFirmware: true},
-    micLevel: {id: 0x54, argc: 0, kind: 'reporter', args: [], needsFirmware: true}
+    micLevel: {id: 0x54, argc: 0, kind: 'reporter', args: [], needsFirmware: true},
+
+    /**
+     * Botón de un control remoto (el modal de PlayCode, o un mando dedicado).
+     *
+     * Es un SENSOR, no una orden: el control no manda al robot, solo actualiza
+     * un estado que el programa del niño consulta cuando quiere. Por eso puede
+     * convivir con el modo autónomo sin romper la regla de "un solo dueño del
+     * hardware" -- el programa de la placa sigue mandando, y el control es una
+     * entrada más, como los botones soldados.
+     *
+     * Si el control deja de dar señal (se cierra la pestaña, se sale de
+     * alcance), el firmware apaga todos sus botones solo. Esa es la diferencia
+     * con leer el teclado del PC: aquí "no hay noticias" es un estado que la
+     * placa puede detectar, y ante la duda contesta "no presionado" en vez de
+     * quedarse pegada con la última tecla.
+     */
+    readRemote: {id: 0x55, argc: 1, kind: 'reporter', args: ['button'], needsFirmware: true}
 };
 
 /** Mapa inverso id -> nombre, para desensamblar y para los mensajes de error. */
