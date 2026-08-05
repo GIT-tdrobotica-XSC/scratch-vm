@@ -3,6 +3,7 @@ const ArgumentType = require('../../extension-support/argument-type');
 const PlayGoSerial = require('./playgo-serial');
 const PlayGoBLE = require('./playgo-ble');
 const ProgramUploader = require('../common/program-uploader');
+const RemoteControl = require('../common/remote-control');
 
 class PlayGoPeripheral {
     constructor(runtime, extensionId) {
@@ -52,9 +53,13 @@ class PlayGoPeripheral {
         this._lastServoAngles = {};  // ultimo angulo enviado POR PIN {gpio: angle}
         this._lastOledJson = null;   // ultimo comando de OLED (menos oledDisplay)
 
-        // Control remoto: mascara de 8 bits (un bit por boton) y su latido.
-        this._remoteMask = 0;
-        this._remoteHeartbeat = null;
+        // Control remoto. El estado y el ritmo del latido viven en el modulo
+        // compartido, que usa TAMBIEN la pagina suelta del mando: si cada uno
+        // tuviera su copia, divergirian y el fallo solo saldria en el aula.
+        // Solo se manda si hay enlace; sin conexion no hay a quien avisar.
+        this._remote = new RemoteControl(line => (
+            this.isConnected() ? this.send(line) : null
+        ));
 
         // Subida de programas compilados (modo autonomo). El uploader es
         // agnostico del transporte: se le pasa send/isConnected y el peripheral
@@ -478,20 +483,12 @@ class PlayGoPeripheral {
      * justo lo que queremos cuando se cierra el control o se pierde el enlace.
      */
     startRemote () {
-        if (this._remoteHeartbeat) return;
-        this._remoteMask = 0;
-        this._sendRemoteMask();
-        this._remoteHeartbeat = setInterval(() => this._sendRemoteMask(), 200);
+        this._remote.start();
     }
 
     /** Cierra el control y suelta todos los botones. */
     stopRemote () {
-        if (this._remoteHeartbeat) {
-            clearInterval(this._remoteHeartbeat);
-            this._remoteHeartbeat = null;
-        }
-        this._remoteMask = 0;
-        this._sendRemoteMask();
+        this._remote.stop();
     }
 
     /**
@@ -500,35 +497,12 @@ class PlayGoPeripheral {
      * @param {boolean} pressed Si esta presionado.
      */
     setRemoteButton (index, pressed) {
-        const i = parseInt(index, 10);
-        if (isNaN(i) || i < 0 || i > 7) return;
-        const bit = 1 << i;
-        const next = pressed ? (this._remoteMask | bit) : (this._remoteMask & ~bit);
-        if (next === this._remoteMask) return;
-        this._remoteMask = next;
-        // Se envia en el momento, sin esperar al latido: la respuesta tiene que
-        // sentirse inmediata al pulsar.
-        this._sendRemoteMask();
+        this._remote.setButton(index, pressed);
     }
 
     /** @returns {boolean} True si ese boton del control esta presionado. */
     isRemoteButtonPressed (index) {
-        const i = parseInt(index, 10);
-        if (isNaN(i) || i < 0 || i > 7) return false;
-        return (this._remoteMask & (1 << i)) !== 0;
-    }
-
-    /**
-     * Envia el estado del control. NO se deduplica a proposito: el reenvio del
-     * mismo valor es lo que le dice a la placa "sigo aqui", y es lo que hace
-     * que su apagado por silencio funcione.
-     */
-    _sendRemoteMask () {
-        if (!this.isConnected()) return;
-        this.send(JSON.stringify({
-            command: 'outputsQueue',
-            testValue: [{ command: 'remoteKeys', mask: this._remoteMask }]
-        })).catch(() => { });
+        return this._remote.isPressed(index);
     }
 
     /**
