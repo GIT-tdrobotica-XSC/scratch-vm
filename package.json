@@ -13,10 +13,14 @@
   "main": "./dist/node/scratch-vm.js",
   "browser": "./dist/web/scratch-vm.js",
   "exports": {
-    "webpack": "./src/index.js",
-    "browser": "./dist/web/scratch-vm.js",
-    "node": "./dist/node/scratch-vm.js",
-    "default": "./src/index.js"
+    ".": {
+      "webpack": "./src/index.js",
+      "browser": "./dist/web/scratch-vm.js",
+      "node": "./dist/node/scratch-vm.js",
+      "default": "./src/index.js"
+    },
+    "./src/extensions/playgo/playgo-ble": "./src/extensions/playgo/playgo-ble.js",
+    "./src/extensions/common/remote-control": "./src/extensions/common/remote-control.js"
   },
   "scripts": {
     "build": "npm run docs && webpack --progress",
